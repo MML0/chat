@@ -1,0 +1,12 @@
+# Apache / LiteSpeed: only webhook.php, check.php, migrate.php and cron/*.php are public.
+# (Every other PHP file also exits on direct access, so nginx hosts are safe too.)
+Options -Indexes
+<FilesMatch "\.(sql|md|log|json|lock|dist)$|^config(-example)?\.php$|^(bootstrap|database)\.php$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>

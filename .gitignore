@@ -1,6 +1,11 @@
 config.php
 starter/config.php
-storage/
+# runtime data (logs …), but keep the .htaccess that protects the folder
+storage/*
+!storage/.htaccess
+**/storage/*
+!**/storage/.htaccess
+hamsobat/tests/e2e/state/
 *.zip
 .vscode/
 __pycache__/

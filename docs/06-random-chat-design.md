@@ -1,5 +1,7 @@
 # Anonymous random chat for Bale (چت ناشناس): design
 
+> The bot is now built in `hamsobat/` (هم‌صحبت). It follows this plan with changes: a required channel and referral, daily free chats plus credits, an anonymous inbox, and no premium yet. `hamsobat/README.md` describes what it actually does.
+
 Goal: two strangers are matched at random and talk through the bot. Neither sees the other's name, username or id. Free to use, with premium extras sold through the Bale wallet (`starter/src/Payments.php`).
 
 The runtime is a webhook only (no daemon or cron), so everything happens when a user sends something.

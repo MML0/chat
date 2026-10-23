@@ -5,6 +5,7 @@ Everything learned from building and fixing the Persian Bale AI bot (GPT_BOTble)
 ## What's here
 | | |
 |---|---|
+| `hamsobat/` | **هم‌صحبت: the finished anonymous random chat bot.** Profiles, matching, relay, referrals, channel gate, quotas, anonymous inbox, admin. Install steps and the deployment checklist are in `hamsobat/README.md`. |
 | `starter/` | **Tested, reusable PHP**: Bale API client, wallet payments, premium time, update de-duplication, `migrate.php`, `check.php`, and a `webhook.php` skeleton. No Composer needed. |
 | `docs/01-bale-api.md` | Endpoints, request formats, update types, links, limits, gotchas |
 | `docs/02-payments.md` | The exact wallet payment flow that works, and what broke when it changed |
