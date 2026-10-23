@@ -345,7 +345,7 @@ test('Rematch cooldown and "next"', function () {
 echo "\nRelay\n";
 
 test('Text and media are relayed anonymously; unsafe content filtered', function () {
-    $w = new World(['msg_rate_per_minute' => 5]);
+    $w = new World(['msg_rate_per_minute' => 8]);
     $w->ready(1, 'Alpha');
     $w->ready(2, 'Beta');
     $w->msg(1, Ui::FIND);
@@ -360,6 +360,15 @@ test('Text and media are relayed anonymously; unsafe content filtered', function
     ok($last['method'] === 'sendPhoto' && $last['p']['photo'] === 'PH1' && $last['p']['caption'] === 'عکس من' && (int) $last['p']['chat_id'] === 2, 'photo by file_id');
     $w->media(1, 'voice', ['file_id' => 'V1', 'duration' => 5, 'file_size' => 5000]);
     ok(end($w->bale->calls)['method'] === 'sendVoice', 'voice');
+    // Media is never downloaded, so length and size never block it (a 3 s voice may arrive as 3000 ms).
+    $w->media(1, 'voice', ['file_id' => 'V3S', 'duration' => 3000, 'file_size' => 9000]);
+    $last = end($w->bale->calls);
+    ok($last['method'] === 'sendVoice' && $last['p']['voice'] === 'V3S' && (int) $last['p']['chat_id'] === 2, 'voice with a big duration number is relayed');
+    $w->media(1, 'video', ['file_id' => 'HUGE', 'duration' => 900, 'file_size' => 400 * 1048576]);
+    ok(end($w->bale->calls)['method'] === 'sendVideo' && end($w->bale->calls)['p']['video'] === 'HUGE', 'big video relayed by file_id');
+    $w->media(1, 'photo', [['file_id' => 'LARGE', 'width' => 1280, 'height' => 960], ['file_id' => 'THUMB', 'width' => 90, 'height' => 67]]);
+    ok(end($w->bale->calls)['p']['photo'] === 'LARGE', 'largest photo size chosen whatever the order');
+    ok(!$w->bale->of('getFile'), 'nothing downloaded');
     $before = count($w->bale->to(2));
     $w->msg(1, 'آیدیم @my_handle هست');
     $w->media(1, 'contact', ['phone_number' => '09121234567']);
@@ -369,7 +378,7 @@ test('Text and media are relayed anonymously; unsafe content filtered', function
     $w->msg(1, 'یک');
     $w->msg(1, 'دو');
     ok(contains($w->bale->lastText(1), 'آهسته‌تر'), 'rate limit');
-    ok($w->count("SELECT message_count FROM {chats}") === 3, 'only delivered messages counted');
+    ok($w->count("SELECT message_count FROM {chats}") === 6, 'only delivered messages counted');
 });
 
 test('copyMessage is the fallback when re-sending fails', function () {

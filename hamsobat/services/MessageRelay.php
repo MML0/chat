@@ -16,7 +16,11 @@ final class MessageRelay
     {
     }
 
-    /** @return array{type:string,text:string,file_id?:string,size?:int,duration?:int,kind?:string} */
+    /**
+     * Only the file_id is kept: media is never downloaded, the bot sends Bale's own file
+     * again, so size and length do not matter here (Bale enforces its own limits).
+     * @return array{type:string,text:string,file_id?:string,kind?:string}
+     */
     public static function extract(array $m): array
     {
         if (isset($m['text'])) {
@@ -24,13 +28,11 @@ final class MessageRelay
         }
         foreach (self::MEDIA_ORDER as $type) {
             if (!empty($m[$type])) {
-                $obj = $type === 'photo' ? $m['photo'][count($m['photo']) - 1] : $m[$type]; // biggest photo size is last
+                $obj = $type === 'photo' ? self::bestPhoto($m['photo']) : $m[$type];
                 return [
-                    'type'     => $type,
-                    'text'     => (string) ($m['caption'] ?? ''),
-                    'file_id'  => (string) ($obj['file_id'] ?? ''),
-                    'size'     => (int) ($obj['file_size'] ?? 0),
-                    'duration' => (int) ($obj['duration'] ?? 0),
+                    'type'    => $type,
+                    'text'    => (string) ($m['caption'] ?? ''),
+                    'file_id' => (string) ($obj['file_id'] ?? ''),
                 ];
             }
         }
@@ -41,6 +43,20 @@ final class MessageRelay
             }
         }
         return ['type' => 'unsupported', 'text' => '', 'kind' => $kind];
+    }
+
+    /** The largest of the sizes Bale sends for one photo (by pixels, then bytes). */
+    public static function bestPhoto(array $sizes): array
+    {
+        $best = [];
+        $score = [-1, -1];
+        foreach ($sizes as $p) {
+            $s = [(int) ($p['width'] ?? 0) * (int) ($p['height'] ?? 0), (int) ($p['file_size'] ?? 0)];
+            if ($s > $score) {
+                [$best, $score] = [$p, $s];
+            }
+        }
+        return $best;
     }
 
     /** Persian reason why this content may not be sent, or null when it is fine. */
@@ -59,12 +75,6 @@ final class MessageRelay
             $allowed = $inbox ? self::INBOX_TYPES : array_map('trim', explode(',', $s->str('allowed_types')));
             if (!in_array($c['type'], $allowed, true) || ($c['file_id'] ?? '') === '') {
                 return '⚠️ ارسال این نوع پیام مجاز نیست. متن، عکس یا ویس بفرست.';
-            }
-            if (($c['size'] ?? 0) > $s->int('max_file_mb') * 1048576) {
-                return '⚠️ حجم فایل زیاده (حداکثر ' . Text::fa($s->int('max_file_mb')) . ' مگابایت).';
-            }
-            if ($c['type'] === 'voice' && ($c['duration'] ?? 0) > $s->int('max_voice_seconds')) {
-                return '⚠️ ویس خیلی طولانیه (حداکثر ' . Text::fa(intdiv($s->int('max_voice_seconds'), 60)) . ' دقیقه).';
             }
         } elseif (trim($c['text']) === '') {
             return '⚠️ پیام خالیه.';

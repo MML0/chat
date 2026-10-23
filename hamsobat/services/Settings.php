@@ -28,8 +28,6 @@ final class Settings
         'store_message_text'          => [1, 'bool', 'ذخیره متن پیام‌ها برای بررسی گزارش'],
         'block_links'                 => [1, 'bool', 'جلوگیری از ارسال لینک، آیدی و شماره'],
         'allowed_types'               => ['text,photo,voice,audio,sticker,video,animation', 'str', 'نوع پیام‌های مجاز در چت'],
-        'max_file_mb'                 => [20, 'int', 'حداکثر حجم فایل (مگابایت)'],
-        'max_voice_seconds'           => [300, 'int', 'حداکثر طول ویس (ثانیه)'],
         'msg_rate_per_minute'         => [30, 'int', 'حداکثر پیام در دقیقه'],
         'search_rate_per_minute'      => [12, 'int', 'حداکثر جست‌وجو در دقیقه'],
         'inbox_rate_per_hour'         => [10, 'int', 'حداکثر پیام ناشناس در ساعت'],

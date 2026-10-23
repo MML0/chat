@@ -112,12 +112,7 @@ final class ProfileHandler extends Handler
                 $this->say($user, '📸 لطفاً یک عکس بفرست' . ($mode === 'reg' ? ' یا «⏭ رد شدن» رو بزن.' : '.'));
                 return true;
             }
-            $photo = $m['photo'][count($m['photo']) - 1];
-            if ((int) ($photo['file_size'] ?? 0) > $s->int('max_file_mb') * 1048576) {
-                $this->say($user, '⚠️ حجم عکس زیاده. یک عکس کوچک‌تر بفرست.');
-                return true;
-            }
-            $users->update($id, ['photo_file_id' => (string) $photo['file_id']]);
+            $users->update($id, ['photo_file_id' => (string) (MessageRelay::bestPhoto($m['photo'])['file_id'] ?? '')]);
         } else {
             if ($text === null) {
                 $this->say($user, '✍️ لطفاً جوابت رو به‌صورت متن بنویس.');
