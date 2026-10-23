@@ -1,7 +1,7 @@
 <?php
 // Loads every class. No Composer: plain PHP 8.2+ with curl, pdo_mysql, mbstring, json.
 const HAMSOBAT = true;
-const HAMSOBAT_VERSION = '1.3';
+const HAMSOBAT_VERSION = '1.3.1';
 
 require_once __DIR__ . '/database.php';
 // Order matters only for the Handler base class (services/ loads before handlers/ and admin/).

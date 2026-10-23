@@ -51,7 +51,7 @@ return [
         'channel_link'            => '',   // e.g. 'https://ble.ir/hamsohbat_channel'
         'daily_free_chats'        => 5,
         'referral_reward_credits' => 3,
-        'search_timeout_seconds'  => 30,
+        'search_timeout_seconds'  => 120,
         'min_age'                 => 18,
     ],
 ];

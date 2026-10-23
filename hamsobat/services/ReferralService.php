@@ -100,13 +100,17 @@ final class ReferralService
     /**
      * Pending referrals of friends who finished their profile: retried in the hourly cleanup,
      * so a friend who joins the channel later still counts even if they never press anything.
-     * @return array<int, array> the invited users to try (oldest first)
+     * Newest first and only the last 14 days, so a few friends who never join cannot take every
+     * slot. Older ones still count the next time that friend uses the bot (find() qualifies).
+     * @return array<int, array> the invited users to try
      */
     public function pendingToRetry(int $limit = 30): array
     {
         return $this->app->db->all(
             "SELECT u.* FROM {referrals} r JOIN {users} u ON u.id = r.invited_user_id
-             WHERE r.status = 'pending' AND u.profile_completed = 1 AND u.status = 'active' ORDER BY r.id LIMIT " . (int) $limit
+             WHERE r.status = 'pending' AND r.created_at >= ? AND u.profile_completed = 1 AND u.status = 'active'
+             ORDER BY r.id DESC LIMIT " . (int) $limit,
+            [$this->app->ts($this->app->now() - 14 * 86400)]
         );
     }
 

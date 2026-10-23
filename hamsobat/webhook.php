@@ -2,7 +2,8 @@
 // ============================================================================
 // webhook.php — Bale posts every update here (set it with check.php?setwebhook=1).
 //   1. secret in the URL (?k=…)   2. decode   3. DB + de-duplicate re-delivered updates
-//   4. periodic work (search timeouts, idle chats, cleanup)   5. route to the handlers
+//   4. route to the handlers   5. answer Bale, then periodic work (search timeouts, idle
+//      chats, cleanup, "send to all"), so the user never waits for someone else's work
 // ============================================================================
 $started = hrtime(true);
 require __DIR__ . '/bootstrap.php';
@@ -36,12 +37,19 @@ try {
     http_response_code(500); // Bale will retry later
     exit;
 }
-// Response time, Bale latency and DB queries of this request → the panel's server page.
+// Response time, Bale latency and DB queries of this update → the panel's server page.
+// Measured until the update is handled, not the background work after it.
 $failed = false;
-register_shutdown_function(function () use ($app, $started, &$failed) {
-    $fatal = error_get_last();
-    $fatal = $fatal && in_array($fatal['type'], [E_ERROR, E_CORE_ERROR, E_COMPILE_ERROR], true);
-    Metrics::record($app, 'webhook', (hrtime(true) - $started) / 1e6, $failed || $fatal);
+$measured = false;
+$measure = function (bool $fatal = false) use ($app, $started, &$failed, &$measured) {
+    if (!$measured) {
+        $measured = true;
+        Metrics::record($app, 'webhook', (hrtime(true) - $started) / 1e6, $failed || $fatal);
+    }
+};
+register_shutdown_function(function () use ($measure) {
+    $e = error_get_last();
+    $measure($e && in_array($e['type'], [E_ERROR, E_CORE_ERROR, E_COMPILE_ERROR], true));
 });
 if (isset($update['update_id'])) {
     try {
@@ -54,13 +62,8 @@ if (isset($update['update_id'])) {
     }
 }
 
-// 4 + 5) Work. Errors are logged (readable with /errors) and Bale still gets 200, so a
+// 4) Work. Errors are logged (readable with /errors) and Bale still gets 200, so a
 // broken update is not re-sent forever.
-try {
-    $app->maintenance()->tick();
-} catch (Throwable $e) {
-    $app->log->error('tick: ' . $e->getMessage(), ['at' => basename($e->getFile()) . ':' . $e->getLine()]);
-}
 try {
     (new Router($app))->handle($update);
 } catch (Throwable $e) {
@@ -72,8 +75,10 @@ try {
     }
     $app->alertAdminsOnce('webhook_error', "⚠️ خطا در ربات:\n" . mb_substr($e->getMessage(), 0, 500) . "\n\nجزئیات: /errors", 600);
 }
+// 5) Bale gets its answer, then the periodic work runs.
+$measure();
 try {
-    $app->maintenance()->afterResponse(); // a running "send to all" moves on a little
+    $app->maintenance()->afterResponse();
 } catch (Throwable $e) {
-    $app->log->error('broadcast: ' . $e->getMessage());
+    $app->log->error('maintenance: ' . $e->getMessage(), ['at' => basename($e->getFile()) . ':' . $e->getLine()]);
 }

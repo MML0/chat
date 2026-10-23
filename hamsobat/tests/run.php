@@ -1110,6 +1110,87 @@ test('Referral: no "unlocked" message for admins or already-unlocked users', fun
     ok(contains($t, 'ثبت‌نامش رو کامل کرد') && !contains($t, 'برات باز شد'), 'admin rewarded without the misleading unlock line');
 });
 
+test('Referral retry: newest pending friends first, old ones do not take every slot', function () {
+    $w = new World();
+    $a = $w->ready(1, 'Inviter');
+    $old = $w->ready(2, 'OldFriend');
+    $new = $w->ready(3, 'NewFriend');
+    foreach ([[$old, 20], [$new, 1]] as [$f, $days]) {
+        $w->app->db->insert('referrals', ['inviter_user_id' => $a['id'], 'invited_user_id' => $f['id'], 'status' => 'pending', 'created_at' => $w->app->ts($w->time - $days * 86400)]);
+    }
+    $ids = array_map(fn ($u) => (int) $u['id'], $w->app->referrals()->pendingToRetry(30));
+    ok($ids === [(int) $new['id']], 'only the last 14 days, newest first');
+});
+
+echo "\nSearch review\n";
+
+test('A search that ran out but was never told still matches the next searcher', function () {
+    $w = new World(['search_timeout_seconds' => 30]);
+    $w->ready(1, 'Alpha', 'f');
+    $w->ready(2, 'Beta', 'm');
+    $w->find(1);
+    $w->time += 40; // nobody used the bot meanwhile: Alpha still sees "searching"
+    $w->find(2);
+    $w->app->maintenance()->afterResponse(); // what webhook.php runs after the update
+    ok($w->activeChat(1) !== null && $w->activeChat(2) !== null, 'matched');
+    ok(!contains(implode("\n", $w->bale->texts(1)), 'پیدا نشد'), 'Alpha was never told "nobody found"');
+    $w->ready(3, 'Gamma', 'f');
+    $w->find(3);
+    $w->time += 30 + 601;
+    $w->ready(4, 'Delta', 'm');
+    $w->find(4);
+    ok($w->activeChat(3) === null && $w->activeChat(4) === null, 'a search that ran out over 10 minutes ago is not matched');
+    $w->app->maintenance()->afterResponse();
+    ok(contains($w->bale->lastText(3), 'پیدا نشد'), 'and its user is told after the update');
+});
+
+test('Search watcher: "nobody found" on time without cron, one watcher at a time', function () {
+    $w = new World(['search_timeout_seconds' => 30]);
+    $a = $w->ready(1, 'Alpha', 'f');
+    $sleep = function (int $s) use ($w) {
+        $w->time += $s;
+    };
+    $w->find(1);
+    $start = $w->time;
+    ok($w->app->maintenance()->watchSearches($sleep) === 1 && contains($w->bale->lastText(1), 'پیدا نشد'), 'told by the watcher');
+    ok($w->time - $start >= 30 && $w->time - $start <= 32, 'right when the search ran out (' . ($w->time - $start) . ' s)');
+    ok((int) $w->app->settings->raw('_watch') <= $w->time, 'lease handed back');
+    ok($w->app->maintenance()->watchSearches($sleep) === 0 && $w->time - $start <= 32, 'nobody searching: returns at once');
+
+    $w->find(1);
+    $w->app->settings->internal('_watch', (string) ($w->time + 100), $w->time);
+    $before = $w->time;
+    ok($w->app->maintenance()->watchSearches($sleep) === 0 && $w->time === $before, 'another request is watching: does not wait');
+    $w->app->settings->internal('_watch', '0', $w->time);
+
+    $w->ready(2, 'Beta', 'm');
+    $matched = false;
+    $sleepAndMatch = function (int $s) use ($w, &$matched) {
+        $w->time += $s;
+        if (!$matched) {
+            $matched = true;
+            $w->find(2); // someone arrives while the watcher sleeps
+        }
+    };
+    ok($w->app->maintenance()->watchSearches($sleepAndMatch) === 0 && $w->activeChat(1) !== null, 'a search matched meanwhile is left alone');
+    ok(!contains($w->bale->lastText(1), 'پیدا نشد'), 'no "nobody found" after the match');
+    ok($w->app->quota()->status((int) $a['id'])['free_left'] === 4, 'one chat spent');
+});
+
+test('Search buttons answer Bale first (no spinning button while matching)', function () {
+    $w = new World();
+    $w->ready(1, 'Alpha', 'f');
+    $w->ready(2, 'Beta', 'm');
+    $w->find(1);
+    $w->msg(2, Ui::FIND);
+    $from = count($w->bale->calls);
+    $w->cb(2, 'fg:any');
+    $calls = array_slice($w->bale->calls, $from);
+    ok($calls[0]['method'] === 'answerCallbackQuery', 'answered before anything else');
+    ok(count(array_filter($calls, fn ($c) => $c['method'] === 'answerCallbackQuery')) === 1, 'answered once');
+    ok($w->activeChat(2) !== null && count($calls) >= 4, 'then matched and both told');
+});
+
 echo "\n" . $GLOBALS['pass'] . ' passed, ' . count($GLOBALS['fail']) . " failed\n";
 foreach ($GLOBALS['fail'] as $f) {
     echo "  ✘ {$f}\n";

@@ -57,9 +57,18 @@ hamsobat/
    - **Or** send `/setchannel @your_channel https://ble.ir/your_channel` to the bot. It runs a diagnosis right away; `/channeltest` repeats it.
    - To turn the requirement off: `/setchannel off`.
 8. **Admin panel:** open `https://YOUR.SITE/hamsobat/panel/`. Enter the admin password; the bot then sends a 6-digit code to your Bale account (`admin.ids`). Enter it and you're in.
-9. **Optional cron:** call `https://YOUR.SITE/hamsobat/cron/cleanup.php?k=CRON_SECRET` every minute, from the panel's cron or a free external cron service. Without it, the same work runs inside the webhook while people use the bot. The only difference: a lone searcher gets "nobody found" a bit late.
+9. **Optional cron:** call `https://YOUR.SITE/hamsobat/cron/cleanup.php?k=CRON_SECRET` every minute, from the panel's cron or a free external cron service. Without it, the same work runs inside the webhook. On PHP-FPM or LiteSpeed hosts (almost all), "nobody found" still arrives on time; on others it arrives with the next update.
 
 HTTPS is required by Bale for webhooks.
+
+### Updating to 1.3.1 (search fixes)
+Replace the files (keep `config.php`). No table changes: `migrate.php` is not needed.
+
+- **A search no longer dies silently.** Before, a search that ran out was only noticed when someone else pressed a button: that person was queued alone and the first searcher got "nobody found" at that moment, so two people a little apart never met. Now a search counts until its user has actually been told, and after its answer to Bale the webhook stays (one request at a time) to send "nobody found" on time.
+- **Search time 30 s → 120 s by default.** If your `config.php` has `'search_timeout_seconds' => 30`, change it, or set it in the panel (⚙️ → 🎟 سهمیه و جست‌وجو).
+- **Faster buttons:** the periodic work (timeouts, cleanup, "send to all") runs after Bale has its answer, not before the user's update; the search buttons stop spinning at once.
+- **Referral retry:** the hourly retry checks the newest pending friends (last 14 days) instead of the same 30 oldest ones forever.
+- **Testing with two accounts?** `rematch_cooldown_minutes` (default 10) keeps the same two people apart after a chat. Set it to 0 while you test.
 
 ### Upgrading a live bot to 1.3 (no downtime)
 Same steps as 1.2 below. `migrate.php` adds two new tables (`user_accounts`, `broadcasts`) and changes nothing that exists; until it has run, the bot simply skips the features that need them.
@@ -97,8 +106,8 @@ Same steps as 1.2 below. `migrate.php` adds two new tables (`user_accounts`, `br
 | `referral_requires_channel` | 1 | a referral counts only when the friend also joined the channel |
 | `referral_daily_reward_cap` | 20 | rewarded referrals per inviter per day |
 | `required_channel` / `channel_link` / `require_channel` | – | the channel gate (`/setchannel`) |
-| `search_timeout_seconds` | 30 | how long one search waits |
-| `rematch_cooldown_minutes` | 10 | the same two people are not matched again for this long |
+| `search_timeout_seconds` | 120 | how long one search waits |
+| `rematch_cooldown_minutes` | 10 | the same two people are not matched again for this long (0 while testing with two accounts) |
 | `chat_idle_minutes` | 30 | a chat without messages ends by itself (0 = never) |
 | `min_age` / `max_age` | 18 / 80 | registration age limits. Under-18s and adults are **never** matched, even if you lower `min_age` |
 | `block_links` | 1 | blocks links, @usernames and phone numbers in chats, bios and the inbox |
@@ -190,7 +199,9 @@ Admins skip the channel and referral requirements, so the owner can test right a
   - Each webhook request records its duration, Bale calls and latency, DB queries and peak memory into a per-minute row (`{request_metrics}`, kept 14 days).
   - That's one cheap upsert per request. The Server page draws its charts from it.
 - **Unlimited chats** (`{user_perks}`): a gift from the admin that the quota checks. Chats are still counted, but never limited.
-- **Search timeouts and idle chats:** `webhook.php` runs a throttled cleanup (at most every 10 s) on every update, and `cron/cleanup.php` does the same on demand.
+- **Search timeouts and idle chats:** after each update has been handled (and Bale has its answer, where PHP-FPM or LiteSpeed allow it), `webhook.php` runs a throttled cleanup (at most every 10 s). `cron/cleanup.php` does the same on demand.
+  - **On-time "nobody found" without cron:** one request at a time (a lease in `{settings}`) stays after its answer, sleeps until the next search runs out and tells that user. It stays at most the search time + 15 s (60–300 s), wakes every ≤ 20 s and uses no CPU while it sleeps.
+  - A search that ran out still matches until its user has been told (at most 10 minutes), because their screen still says "searching".
 
 ## 6. Bale API: what was verified
 

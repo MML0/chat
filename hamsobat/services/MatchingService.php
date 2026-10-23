@@ -11,6 +11,13 @@ defined('HAMSOBAT') || exit;
 
 final class MatchingService
 {
+    /**
+     * A search whose time ran out still counts until its user has been told "nobody found"
+     * (the watcher after a webhook, the next update or cron does that), because their screen
+     * still says "searching". After this long it never counts.
+     */
+    private const STALE_SECONDS = 600;
+
     public function __construct(private App $app)
     {
     }
@@ -33,7 +40,7 @@ final class MatchingService
         $today = $this->app->today($now);
         $adultCutoff = date('Y-m-d', strtotime("{$today} -18 years"));
         $p = [
-            'now'     => $this->app->ts($now),
+            'fresh'   => $this->app->ts($now - self::STALE_SECONDS),
             'me'      => $me,
             'pref1'   => $user['preferred_gender'],
             'pref2'   => $user['preferred_gender'],
@@ -49,13 +56,15 @@ final class MatchingService
         $expires = $this->app->ts($now + max(10, $s->int('search_timeout_seconds')));
         $quota = $this->app->quota();
 
-        return $this->app->db->tx(function (Database $db) use ($me, $user, $p, $expires, $today, $quota) {
+        $nowTs = $this->app->ts($now);
+
+        return $this->app->db->tx(function (Database $db) use ($me, $user, $p, $expires, $today, $quota, $nowTs) {
             $this->lock($db);
             if ($db->value('SELECT chat_id FROM {active_chats} WHERE user_id = ?', [$me])) {
                 return ['status' => 'in_chat'];
             }
             $queued = $db->row('SELECT status, expires_at FROM {chat_queue} WHERE user_id = ?', [$me]);
-            $waiting = $queued && $queued['status'] === 'waiting' && $queued['expires_at'] > $p['now'];
+            $waiting = $queued && $queued['status'] === 'waiting' && $queued['expires_at'] > $nowTs;
             if (!$quota->hasAvailable($me)) {
                 $db->run("UPDATE {chat_queue} SET status = 'cancelled' WHERE user_id = ? AND status = 'waiting'", [$me]);
                 return ['status' => 'no_credits'];
@@ -73,9 +82,9 @@ final class MatchingService
                     'user_one_id'     => $partner, // waited longer
                     'user_two_id'     => $me,
                     'status'          => 'active',
-                    'started_at'      => $p['now'],
+                    'started_at'      => $nowTs,
                     'usage_date'      => $today,
-                    'last_message_at' => $p['now'],
+                    'last_message_at' => $nowTs,
                 ]);
                 $c1 = $quota->consume($partner, $chatId);
                 $c2 = $quota->consume($me, $chatId);
@@ -97,7 +106,7 @@ final class MatchingService
             $db->run(
                 "INSERT INTO {chat_queue} (user_id, preferred_gender, queued_at, expires_at, status) VALUES (?, ?, ?, ?, 'waiting')
                  ON DUPLICATE KEY UPDATE preferred_gender = VALUES(preferred_gender), queued_at = VALUES(queued_at), expires_at = VALUES(expires_at), status = 'waiting'",
-                [$me, $user['preferred_gender'], $p['now'], $expires]
+                [$me, $user['preferred_gender'], $nowTs, $expires]
             );
             return ['status' => 'queued', 'dropped' => $dropped];
         });
@@ -110,7 +119,7 @@ final class MatchingService
         $id = $db->value(
             "SELECT q.user_id FROM {chat_queue} q
              JOIN {users} u ON u.id = q.user_id
-             WHERE q.status = 'waiting' AND q.expires_at > :now AND q.user_id <> :me
+             WHERE q.status = 'waiting' AND q.expires_at > :fresh AND q.user_id <> :me
                AND u.status = 'active' AND u.profile_completed = 1
                AND (:pref1 = 'any' OR u.gender = :pref2)
                AND (q.preferred_gender = 'any' OR q.preferred_gender = :gender)
@@ -181,6 +190,13 @@ final class MatchingService
             $this->close($db, $chatId, $byUserId, $reason);
             return $users;
         });
+    }
+
+    /** When the next waiting search runs out (unix time), or null when nobody is searching. */
+    public function nextExpiry(): ?int
+    {
+        $at = $this->app->db->value("SELECT MIN(expires_at) FROM {chat_queue} WHERE status = 'waiting'");
+        return $at === null ? null : (int) strtotime($at . ' UTC');
     }
 
     /** Waiting entries whose time is up → 'expired'. @return int[] user ids to tell "nobody found" */

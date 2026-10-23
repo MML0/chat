@@ -26,6 +26,9 @@ final class BaleApi
     /** This request's Bale traffic: calls, total milliseconds, failed answers. */
     public array $stats = ['calls' => 0, 'ms' => 0.0, 'errors' => 0];
 
+    /** Callback queries answered in this request (a callback can be answered only once). */
+    private array $answered = [];
+
     private string $base;
     /** @var callable fn(string $url, string|array $body, array $headers, int $timeout): array{0:int,1:string|false} */
     private $transport;
@@ -97,6 +100,10 @@ final class BaleApi
     /** Every callback must be answered, or the button keeps spinning. */
     public function answer(string $callbackId, string $text = '', bool $alert = false): array
     {
+        if (isset($this->answered[$callbackId])) {
+            return ['ok' => true, 'result' => true];
+        }
+        $this->answered[$callbackId] = true;
         return $this->call('answerCallbackQuery', ['callback_query_id' => $callbackId, 'text' => $text, 'show_alert' => $alert], 5);
     }
 

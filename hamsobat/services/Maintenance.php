@@ -1,7 +1,8 @@
 <?php
-// Periodic work. The host may have no cron, so webhook.php calls tick() on every update
-// (it does real work at most every 10 s) and cron/cleanup.php can call run() from a real
-// cron or an external "visit this URL every minute" service for exact search timeouts.
+// Periodic work. The host may have no cron, so webhook.php calls afterResponse() after every
+// update: tick() does real work at most every 10 s, and one request at a time stays a little
+// longer (after Bale already has its answer) to send "nobody found" exactly on time.
+// cron/cleanup.php can call run() from a real cron or an external "visit this URL" service.
 namespace Hamsobat;
 
 defined('HAMSOBAT') || exit;
@@ -26,18 +27,76 @@ final class Maintenance
     }
 
     /**
-     * After the webhook has done its work: send the next batch of a running broadcast
-     * (at most every 5 s, at most 2 s). Bale's connection is released first when PHP-FPM allows.
+     * After the webhook has handled its update. Bale's connection is released first when the
+     * host allows it (PHP-FPM or LiteSpeed), so nobody waits for this: periodic work, the next
+     * batch of a running "send to all" (at most every 5 s, at most 2 s), the search watcher.
      */
     public function afterResponse(): void
     {
-        if (!$this->app->broadcaster()->running() || !$this->app->settings->claim('_bc_tick', 5, $this->app->now())) {
-            return;
+        $released = self::release();
+        $this->tick();
+        if ($this->app->broadcaster()->running() && $this->app->settings->claim('_bc_tick', 5, $this->app->now())) {
+            $this->app->broadcaster()->step(2.0, 15);
         }
+        if ($released) {
+            $this->watchSearches();
+        }
+    }
+
+    /** Sends the response now and keeps running. false when the host cannot do that. */
+    private static function release(): bool
+    {
+        ignore_user_abort(true);
         if (function_exists('fastcgi_finish_request')) {
-            fastcgi_finish_request();
+            return fastcgi_finish_request();
         }
-        $this->app->broadcaster()->step(2.0, 15);
+        if (function_exists('litespeed_finish_request')) {
+            return litespeed_finish_request();
+        }
+        return false;
+    }
+
+    /**
+     * Without cron nothing would run when a search runs out, so the user would only hear
+     * "nobody found" when someone else uses the bot. One request at a time (the '_watch'
+     * lease holds when it stops) sleeps until the next search runs out and tells that user.
+     * It stays at most the search time + 15 s (60–300 s) and wakes at least every 20 s, which
+     * keeps the database connection alive. Sleeping costs no CPU and no max_execution_time.
+     * @param callable|null $sleep fn (int $seconds), for tests
+     * @return int users told "nobody found"
+     */
+    public function watchSearches(?callable $sleep = null): int
+    {
+        $sleep ??= fn (int $seconds) => sleep($seconds);
+        $m = $this->app->matching();
+        $stop = $this->app->now() + min(300, max(60, $this->app->settings->int('search_timeout_seconds') + 15));
+        $n = 0;
+        while (($next = $m->nextExpiry()) !== null && $next <= $stop && $this->claimWatch($stop)) {
+            @set_time_limit($stop - $this->app->now() + 30);
+            while (($next = $m->nextExpiry()) !== null && $next <= $stop) {
+                if ($next > $this->app->now()) {
+                    $sleep(min(20, $next - $this->app->now()));
+                    continue; // the search may have been matched or cancelled meanwhile
+                }
+                $done = $this->expireSearches();
+                $n += $done;
+                if ($done === 0) {
+                    $sleep(1);
+                }
+            }
+            // Hand over: the next update may watch again (this loop re-checks for a search
+            // that came in while the lease still said "watched").
+            $this->app->settings->swap('_watch', (string) $stop, (string) $this->app->now(), $this->app->now());
+        }
+        return $n;
+    }
+
+    /** Takes the watcher lease unless another request is watching right now. */
+    private function claimWatch(int $stop): bool
+    {
+        $s = $this->app->settings;
+        $held = $s->raw('_watch', true); // another request may have handed it over just now
+        return (int) ($held ?? 0) <= $this->app->now() && $s->swap('_watch', $held, (string) $stop, $this->app->now());
     }
 
     /** Everything, now (cron). @return array counts for the cron output */

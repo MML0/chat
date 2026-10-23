@@ -18,7 +18,7 @@ final class Settings
         'referral_daily_reward_cap'   => [20, 'int', 'حداکثر دعوت‌های جایزه‌دار هر نفر در روز'],
         'referral_attach_minutes'     => [60, 'int', 'حساب تا چند دقیقه بعد از ساخت «جدید» حساب می‌شود'],
         'daily_free_chats'            => [5, 'int', 'چت رایگان روزانه (فقط چت‌های وصل‌شده حساب می‌شوند)'],
-        'search_timeout_seconds'      => [30, 'int', 'زمان جست‌وجو (ثانیه)'],
+        'search_timeout_seconds'      => [120, 'int', 'زمان جست‌وجو (ثانیه)'],
         'rematch_cooldown_minutes'    => [10, 'int', 'دو نفر تا چند دقیقه دوباره به هم وصل نشوند'],
         'chat_idle_minutes'           => [30, 'int', 'پایان خودکار چت بی‌پیام (دقیقه، ۰ = خاموش)'],
         'min_age'                     => [18, 'int', 'حداقل سن. زیر ۱۸ و بالای ۱۸ هیچ‌وقت به هم وصل نمی‌شوند'],
@@ -99,9 +99,12 @@ final class Settings
         return null;
     }
 
-    /** Internal key/value (names starting with _), e.g. the last cleanup time. */
-    public function raw(string $name): ?string
+    /** Internal key/value (names starting with _), e.g. the last cleanup time. $fresh skips this request's cache. */
+    public function raw(string $name, bool $fresh = false): ?string
     {
+        if ($fresh) {
+            $this->saved = null;
+        }
         $v = $this->saved()[$name] ?? null;
         return $v === null ? null : (string) $v;
     }
@@ -118,26 +121,24 @@ final class Settings
     /** Atomically claims a periodic job: true for exactly one request per $every seconds. */
     public function claim(string $name, int $every, int $now): bool
     {
-        $last = (int) ($this->raw($name) ?? 0);
-        if ($now - $last < $every) {
-            return false;
-        }
+        $last = $this->raw($name);
+        return $now - (int) ($last ?? 0) >= $every && $this->swap($name, $last, (string) $now, $now);
+    }
+
+    /** Compare-and-set of an internal value: only the request that still sees $old wins. */
+    public function swap(string $name, ?string $old, string $new, int $now): bool
+    {
         $stamp = gmdate('Y-m-d H:i:s', $now);
-        if ($this->raw($name) === null) {
-            try {
-                $this->db->run('INSERT INTO {settings} (name, value, updated_at) VALUES (?, ?, ?)', [$name, (string) $now, $stamp]);
-                $this->saved = null;
-                return true;
-            } catch (\PDOException $e) {
-                if (!Database::isDuplicate($e)) {
-                    throw $e;
-                }
-                $this->saved = null;
-                return false;
+        try {
+            $won = $old === null
+                ? $this->db->run('INSERT INTO {settings} (name, value, updated_at) VALUES (?, ?, ?)', [$name, $new, $stamp])->rowCount() === 1
+                : $this->db->run('UPDATE {settings} SET value = ?, updated_at = ? WHERE name = ? AND value = ?', [$new, $stamp, $name, $old])->rowCount() === 1;
+        } catch (\PDOException $e) {
+            if (!Database::isDuplicate($e)) {
+                throw $e;
             }
+            $won = false;
         }
-        // Compare-and-set: only the request that still sees the old value wins.
-        $won = $this->db->run('UPDATE {settings} SET value = ?, updated_at = ? WHERE name = ? AND value = ?', [(string) $now, $stamp, $name, (string) $last])->rowCount() === 1;
         $this->saved = null;
         return $won;
     }

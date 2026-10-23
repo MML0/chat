@@ -166,6 +166,10 @@ final class MatchingHandler extends Handler
 
     public function onCallback(array $user, string $data, array $cb): string|array|null
     {
+        if ($data === 'fd' || str_starts_with($data, 'fg:')) {
+            // Stop the button spinner now: searching and telling both users takes a few calls.
+            $this->app->bale->answer((string) $cb['id']);
+        }
         if ($data === 'fd') {
             $this->find($user);
             return null;
