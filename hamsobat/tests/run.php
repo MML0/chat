@@ -1177,6 +1177,30 @@ test('Search watcher: "nobody found" on time without cron, one watcher at a time
     ok($w->app->quota()->status((int) $a['id'])['free_left'] === 4, 'one chat spent');
 });
 
+test('Age rule: off only between test accounts, real users always separated', function () {
+    $w = new World(['min_age' => 10, 'rematch_cooldown_minutes' => 0]);
+    $w->ready(501, 'AdultTester', 'm');
+    $w->ready(502, 'MinorTester', 'f', 'any', '1392/01/01');
+    $w->ready(503, 'MinorReal', 'f', 'any', '1392/01/01');
+    $w->ready(504, 'AdultReal', 'm');
+    $s = $w->app->settings;
+    ok($s->set('test_accounts', 'abc', $w->time) !== null && $s->set('test_accounts', '12', $w->time) !== null, 'only numeric Bale ids');
+    ok($s->set('test_accounts', '۵۰۱، 502 ', $w->time) === null && $s->str('test_accounts') === '501,502', 'Persian digits and comma accepted, saved as 501,502');
+    $pairs = [[503, 501, false, 'real minor + adult tester'], [502, 504, false, 'minor tester + real adult'], [502, 501, true, 'two test accounts']];
+    foreach ($pairs as [$first, $second, $match, $label]) {
+        $w->find($first);
+        $w->find($second);
+        ok(($w->activeChat($first) !== null) === $match, $label . ($match ? ': matched' : ': not matched'));
+        $w->msg($first, Ui::CANCEL_SEARCH);
+        $w->msg($second, Ui::CANCEL_SEARCH);
+    }
+    $s->set('test_accounts', '', $w->time);
+    $w->msg(501, Ui::END);
+    $w->find(502);
+    $w->find(501);
+    ok($w->activeChat(501) === null, 'list emptied: the rule is back for them too');
+});
+
 test('Search buttons answer Bale first (no spinning button while matching)', function () {
     $w = new World();
     $w->ready(1, 'Alpha', 'f');

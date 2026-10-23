@@ -55,10 +55,13 @@ final class MatchingService
         ];
         $expires = $this->app->ts($now + max(10, $s->int('search_timeout_seconds')));
         $quota = $this->app->quota();
+        // Under-18s and adults are never matched, except two of the admin's test accounts.
+        $testers = $s->ids('test_accounts');
+        $testers = in_array((int) $user['bale_user_id'], $testers, true) ? $testers : [];
 
         $nowTs = $this->app->ts($now);
 
-        return $this->app->db->tx(function (Database $db) use ($me, $user, $p, $expires, $today, $quota, $nowTs) {
+        return $this->app->db->tx(function (Database $db) use ($me, $user, $p, $expires, $today, $quota, $nowTs, $testers) {
             $this->lock($db);
             if ($db->value('SELECT chat_id FROM {active_chats} WHERE user_id = ?', [$me])) {
                 return ['status' => 'in_chat'];
@@ -71,7 +74,7 @@ final class MatchingService
             }
 
             $dropped = [];
-            while ($partner = $this->candidate($db, $p, $dropped)) {
+            while ($partner = $this->candidate($db, $p, $dropped, $testers)) {
                 if (!$quota->hasAvailable($partner)) {
                     // Can only happen if the admin lowered the limit while they waited.
                     $db->run("UPDATE {chat_queue} SET status = 'expired' WHERE user_id = ?", [$partner]);
@@ -112,10 +115,15 @@ final class MatchingService
         });
     }
 
-    /** Longest-waiting compatible user, locked. Both preferences must fit, no block either way. */
-    private function candidate(Database $db, array $p, array $skip): ?int
+    /**
+     * Longest-waiting compatible user, locked. Both preferences must fit, no block either way.
+     * $testers (Bale ids) is only set when the searcher is a test account: then the other test
+     * accounts are allowed whatever their age.
+     */
+    private function candidate(Database $db, array $p, array $skip, array $testers = []): ?int
     {
         $skipSql = $skip ? ' AND q.user_id NOT IN (' . implode(',', array_map('intval', $skip)) . ')' : '';
+        $testSql = $testers ? ' OR u.bale_user_id IN (' . implode(',', array_map('intval', $testers)) . ')' : '';
         $id = $db->value(
             "SELECT q.user_id FROM {chat_queue} q
              JOIN {users} u ON u.id = q.user_id
@@ -123,7 +131,7 @@ final class MatchingService
                AND u.status = 'active' AND u.profile_completed = 1
                AND (:pref1 = 'any' OR u.gender = :pref2)
                AND (q.preferred_gender = 'any' OR q.preferred_gender = :gender)
-               AND ((u.birth_date <= :cutoff) = :adult)
+               AND ((u.birth_date <= :cutoff) = :adult{$testSql})
                AND NOT EXISTS (SELECT 1 FROM {blocked_users} b
                                WHERE (b.blocker_user_id = :me2 AND b.blocked_user_id = q.user_id)
                                   OR (b.blocker_user_id = q.user_id AND b.blocked_user_id = :me3))

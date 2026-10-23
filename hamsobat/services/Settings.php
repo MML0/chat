@@ -21,8 +21,9 @@ final class Settings
         'search_timeout_seconds'      => [120, 'int', 'زمان جست‌وجو (ثانیه)'],
         'rematch_cooldown_minutes'    => [10, 'int', 'دو نفر تا چند دقیقه دوباره به هم وصل نشوند'],
         'chat_idle_minutes'           => [30, 'int', 'پایان خودکار چت بی‌پیام (دقیقه، ۰ = خاموش)'],
-        'min_age'                     => [18, 'int', 'حداقل سن. زیر ۱۸ و بالای ۱۸ هیچ‌وقت به هم وصل نمی‌شوند'],
+        'min_age'                     => [18, 'int', 'حداقل سن. زیر ۱۸ و بالای ۱۸ به هم وصل نمی‌شوند (به‌جز حساب‌های تست)'],
         'max_age'                     => [80, 'int', 'حداکثر سن'],
+        'test_accounts'               => ['', 'str', 'حساب‌های تست (آیدی عددی بله، با کاما): بین همین حساب‌ها قانون سنی ۱۸ خاموش است. کاربران واقعی همیشه جدا می‌مانند'],
         'profile_view_notify_minutes' => [60, 'int', 'فاصله اعلان «یکی پروفایلت رو دید» برای یک نفر (دقیقه)'],
         'message_retention_days'      => [7, 'int', 'نگهداری پیام‌های چت برای بررسی گزارش (روز)'],
         'store_message_text'          => [1, 'bool', 'ذخیره متن پیام‌ها برای بررسی گزارش'],
@@ -71,6 +72,12 @@ final class Settings
         return (string) $this->get($name);
     }
 
+    /** A comma-separated list of numeric ids, e.g. test_accounts. @return int[] */
+    public function ids(string $name): array
+    {
+        return array_values(array_filter(array_map('intval', explode(',', $this->str($name)))));
+    }
+
     /** Validates and saves. Returns null on success or a Persian error. */
     public function set(string $name, string $value, int $now): ?string
     {
@@ -94,6 +101,15 @@ final class Settings
         }
         if ($name === 'channel_link' && $value !== '' && !preg_match('~^https://\S+$~', $value)) {
             return '❌ لینک باید با https:// شروع شود.';
+        }
+        if ($name === 'test_accounts') {
+            $ids = array_values(array_unique(array_filter(preg_split('~[\s,،]+~u', Text::digits($value)))));
+            foreach ($ids as $id) {
+                if (!preg_match('~^\d{3,20}$~', $id)) {
+                    return '❌ آیدی‌های عددی بله را با کاما جدا کنید، مثلاً 123456789, 987654321';
+                }
+            }
+            $value = implode(',', $ids);
         }
         $this->internal($name, $value, $now);
         return null;

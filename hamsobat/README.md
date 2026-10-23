@@ -61,6 +61,9 @@ hamsobat/
 
 HTTPS is required by Bale for webhooks.
 
+### Updating to 1.3.2 (test accounts)
+Replace the files (keep `config.php`); no `migrate.php`. New setting `test_accounts` (panel ⚙️ → 👤 کاربران): list the Bale ids of your test accounts and they can be matched with each other whatever their age. Everyone else keeps the under-18 / 18+ rule. Empty the list when you finish testing.
+
 ### Updating to 1.3.1 (search fixes)
 Replace the files (keep `config.php`). No table changes: `migrate.php` is not needed.
 
@@ -110,6 +113,7 @@ Same steps as 1.2 below. `migrate.php` adds two new tables (`user_accounts`, `br
 | `rematch_cooldown_minutes` | 10 | the same two people are not matched again for this long (0 while testing with two accounts) |
 | `chat_idle_minutes` | 30 | a chat without messages ends by itself (0 = never) |
 | `min_age` / `max_age` | 18 / 80 | registration age limits. Under-18s and adults are **never** matched, even if you lower `min_age` |
+| `test_accounts` | empty | your own test accounts (Bale numeric ids, comma-separated). The under-18 / 18+ rule is off **only between two of them**, so you can test with accounts of any age. Real users are always separated |
 | `block_links` | 1 | blocks links, @usernames and phone numbers in chats, bios and the inbox |
 | `allowed_types` | text,photo,voice,audio,sticker,video,animation | what can be sent in a chat (documents are off) |
 | `message_retention_days` | 7 | chat messages are kept this long for report review, longer only while a report is open |

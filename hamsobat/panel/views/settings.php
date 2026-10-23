@@ -8,7 +8,7 @@ $s = $app->settings;
 $groups = [
     ['🔐 دسترسی و دعوت', 'چه چیزی برای شروع چت لازم است.', ['require_channel', 'required_channel', 'channel_link', 'channel_check_fail_open', 'required_referrals', 'referral_reward_credits', 'referral_requires_channel', 'referral_daily_reward_cap', 'referral_attach_minutes']],
     ['🎟 سهمیه و جست‌وجو', 'چت رایگان روزانه فقط وقتی کم می‌شود که دو نفر واقعاً وصل شوند.', ['daily_free_chats', 'search_timeout_seconds', 'rematch_cooldown_minutes', 'chat_idle_minutes']],
-    ['👤 کاربران', 'سن زیر ۱۸ و بالای ۱۸ هیچ‌وقت به هم وصل نمی‌شوند.', ['min_age', 'max_age', 'profile_view_notify_minutes']],
+    ['👤 کاربران', 'زیر ۱۸ و بالای ۱۸ به هم وصل نمی‌شوند؛ فقط بین حساب‌های تست خودتان این قانون خاموش است.', ['min_age', 'max_age', 'test_accounts', 'profile_view_notify_minutes']],
     ['💬 پیام‌ها و رسانه', 'رسانه‌ها دانلود نمی‌شوند؛ ربات همان فایل بله را دوباره می‌فرستد.', ['allowed_types', 'block_links', 'store_message_text', 'message_retention_days']],
     ['🛡 ضد اسپم و گزارش', 'محدودیت‌ها برای هر کاربر جداگانه حساب می‌شوند.', ['msg_rate_per_minute', 'search_rate_per_minute', 'inbox_rate_per_hour', 'report_rate_per_day', 'auto_suspend_reports', 'notify_admin_reports']],
     ['✨ امکانات', 'خاموش کردن هر بخش فوراً اعمال می‌شود.', ['feature_inbox', 'feature_media', 'feature_profile_view_notify', 'maintenance']],
@@ -51,7 +51,7 @@ $allowed = array_map('trim', explode(',', $s->str('allowed_types')));
             <?php elseif ($type === 'int'): ?>
               <div class="num"><input id="s-<?= $key ?>" type="number" min="0" name="s[<?= $key ?>]" value="<?= (int) $value ?>"><?php if (isset($units[$key])): ?><span><?= $units[$key] ?></span><?php endif; ?></div>
             <?php else: ?>
-              <input id="s-<?= $key ?>" type="text" dir="ltr" name="s[<?= $key ?>]" value="<?= Html::e($value) ?>" placeholder="<?= $key === 'required_channel' ? '@channel' : 'https://ble.ir/…' ?>">
+              <input id="s-<?= $key ?>" type="text" dir="ltr" name="s[<?= $key ?>]" value="<?= Html::e($value) ?>" placeholder="<?= ['required_channel' => '@channel', 'test_accounts' => '123456789, 987654321'][$key] ?? 'https://ble.ir/…' ?>">
             <?php endif; ?>
           </div>
         </div>
