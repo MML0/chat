@@ -1,0 +1,6 @@
+config.php
+starter/config.php
+storage/
+*.zip
+.vscode/
+__pycache__/
