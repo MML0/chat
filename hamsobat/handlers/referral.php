@@ -19,7 +19,8 @@ final class ReferralHandler extends Handler
             $text .= "\n🎁 " . Text::fa($r['credits']) . ' چت اضافه گرفتی.';
         }
         $needed = $this->app->settings->int('required_referrals');
-        if ($needed > 0 && $this->app->referrals()->qualifiedCount((int) $inviter['id']) === $needed) {
+        $alreadyOpen = $inviter['referral_waived'] || $this->app->isAdmin((int) $inviter['bale_user_id']);
+        if ($needed > 0 && !$alreadyOpen && $this->app->referrals()->qualifiedCount((int) $inviter['id']) === $needed) {
             $text .= "\n\n🔓 چت ناشناس برات باز شد! «" . Ui::FIND . '» رو بزن.';
         }
         $this->app->bale->send((int) $inviter['bale_user_id'], $text);

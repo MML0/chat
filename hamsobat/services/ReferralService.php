@@ -97,6 +97,19 @@ final class ReferralService
         return ['inviter' => $this->app->users()->get((int) $ref['inviter_user_id']), 'credits' => $credits];
     }
 
+    /**
+     * Pending referrals of friends who finished their profile: retried in the hourly cleanup,
+     * so a friend who joins the channel later still counts even if they never press anything.
+     * @return array<int, array> the invited users to try (oldest first)
+     */
+    public function pendingToRetry(int $limit = 30): array
+    {
+        return $this->app->db->all(
+            "SELECT u.* FROM {referrals} r JOIN {users} u ON u.id = r.invited_user_id
+             WHERE r.status = 'pending' AND u.profile_completed = 1 AND u.status = 'active' ORDER BY r.id LIMIT " . (int) $limit
+        );
+    }
+
     public function qualifiedCount(int $userId): int
     {
         return (int) $this->app->db->value("SELECT COUNT(*) FROM {referrals} WHERE inviter_user_id = ? AND status = 'qualified'", [$userId]);

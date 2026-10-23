@@ -1041,6 +1041,52 @@ test('Broadcast moves on during webhooks; panel actions: test, send to one', fun
     ok(!$act->run('send_one', ['to' => 'nobody', 'text' => 'x'])[0], 'unknown receiver');
 });
 
+echo "\nReferral review\n";
+
+test('Referral: friend joins the channel later and never presses anything → still counted', function () {
+    $w = new World(['require_channel' => 1, 'required_channel' => '@hamsohbat', 'referral_requires_channel' => 1, 'referral_reward_credits' => 3]);
+    $w->bale->members[FakeBale::BOT_ID] = 'administrator';
+    $w->bale->members[1] = 'member';
+    $a = $w->register(1, 'Inviter');
+    $w->msg(1, Ui::INVITE);
+    $link = 'https://ble.ir/hamsohbatbot?start=ref' . $a['referral_code'];
+    ok(contains(implode("\n", $w->bale->texts(1)), $link), 'invite screen shows the exact deep link');
+    // The friend opens the link: Bale sends "/start ref…"; registers with the date picker (buttons only).
+    $w->msg(2, '/start ref' . $a['referral_code']);
+    ok(contains($w->bale->lastText(1), 'با لینک دعوتت وارد'), 'inviter told someone came');
+    $w->msg(2, Ui::COMPLETE_PROFILE);
+    $w->msg(2, 'دوست');
+    $w->msg(2, 'Friend');
+    $w->cb(2, 'bd:y:1380');
+    $w->cb(2, 'bd:m:1380:5');
+    $w->cb(2, 'bd:d:1380:5:12');
+    $w->cb(2, 'rg:g:f');
+    $w->cb(2, 'rg:p:any');
+    ok($w->count("SELECT COUNT(*) FROM {referrals} WHERE status = 'pending'") === 1, 'pending: friend has not joined the channel');
+    $w->bale->members[2] = 'member'; // joins later, presses nothing
+    $w->time += 3700;
+    $w->app->maintenance()->tick();
+    ok($w->count("SELECT COUNT(*) FROM {referrals} WHERE status = 'qualified'") === 1, 'hourly cleanup counted it');
+    ok($w->app->quota()->status((int) $a['id'])['credits'] === 3 && contains($w->bale->lastText(1), 'برات باز شد'), 'inviter rewarded and unlocked');
+    $w->find(1);
+    ok($w->app->matching()->isSearching((int) $a['id']), 'inviter can search now');
+});
+
+test('Referral: no "unlocked" message for admins or already-unlocked users', function () {
+    $w = new World();
+    $w->msg(9000, '/start');
+    $w->msg(9000, Ui::COMPLETE_PROFILE);
+    $w->msg(9000, 'ادمین');
+    $w->msg(9000, 'BossMan');
+    $w->msg(9000, '1370/01/01');
+    $w->cb(9000, 'rg:g:m');
+    $w->cb(9000, 'rg:p:any');
+    $admin = $w->user(9000);
+    $w->register(2, 'Friend', 'f', 'any', '1376/01/01', 'ref' . $admin['referral_code']);
+    $t = implode("\n", $w->bale->texts(9000));
+    ok(contains($t, 'ثبت‌نامش رو کامل کرد') && !contains($t, 'برات باز شد'), 'admin rewarded without the misleading unlock line');
+});
+
 echo "\n" . $GLOBALS['pass'] . ' passed, ' . count($GLOBALS['fail']) . " failed\n";
 foreach ($GLOBALS['fail'] as $f) {
     echo "  ✘ {$f}\n";
