@@ -4,9 +4,11 @@
 //   1. secret in the URL (?k=…)   2. decode   3. DB + de-duplicate re-delivered updates
 //   4. periodic work (search timeouts, idle chats, cleanup)   5. route to the handlers
 // ============================================================================
+$started = hrtime(true);
 require __DIR__ . '/bootstrap.php';
 
 use Hamsobat\App;
+use Hamsobat\Metrics;
 use Hamsobat\Router;
 
 $config = hamsobat_config();
@@ -34,6 +36,13 @@ try {
     http_response_code(500); // Bale will retry later
     exit;
 }
+// Response time, Bale latency and DB queries of this request → the panel's server page.
+$failed = false;
+register_shutdown_function(function () use ($app, $started, &$failed) {
+    $fatal = error_get_last();
+    $fatal = $fatal && in_array($fatal['type'], [E_ERROR, E_CORE_ERROR, E_COMPILE_ERROR], true);
+    Metrics::record($app, 'webhook', (hrtime(true) - $started) / 1e6, $failed || $fatal);
+});
 if (isset($update['update_id'])) {
     try {
         $app->db->run('INSERT INTO {updates_seen} (update_key, seen_at) VALUES (?, ?)', [$update['update_id'] . ':' . md5($raw), $app->ts()]);
@@ -55,6 +64,7 @@ try {
 try {
     (new Router($app))->handle($update);
 } catch (Throwable $e) {
+    $failed = true;
     $app->log->error($e->getMessage(), ['at' => basename($e->getFile()) . ':' . $e->getLine(), 'update' => array_keys($update)]);
     $from = $update['message']['from']['id'] ?? $update['callback_query']['from']['id'] ?? null;
     if ($from) {

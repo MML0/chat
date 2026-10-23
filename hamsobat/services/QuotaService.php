@@ -15,7 +15,7 @@ final class QuotaService
     {
     }
 
-    /** @return array{limit:int,used:int,free_left:int,credits:int,total:int} */
+    /** @return array{limit:int,used:int,free_left:int,credits:int,total:int,unlimited:bool,unlimited_until:?string} */
     public function status(int $userId): array
     {
         $db = $this->app->db;
@@ -24,7 +24,46 @@ final class QuotaService
         $freeUsed = $row ? (int) $row['successful_chats'] - (int) $row['bonus_credits_used'] : 0;
         $credits = max(0, (int) $db->value('SELECT credit_balance FROM {user_credits} WHERE user_id = ?', [$userId]));
         $freeLeft = max(0, $limit - $freeUsed);
-        return ['limit' => $limit, 'used' => $row ? (int) $row['successful_chats'] : 0, 'free_left' => $freeLeft, 'credits' => $credits, 'total' => $freeLeft + $credits];
+        $perk = $this->unlimited($userId);
+        return [
+            'limit'           => $limit,
+            'used'            => $row ? (int) $row['successful_chats'] : 0,
+            'free_left'       => $freeLeft,
+            'credits'         => $credits,
+            'total'           => $perk ? 1000000 : $freeLeft + $credits,
+            'unlimited'       => (bool) $perk,
+            'unlimited_until' => $perk['unlimited_until'] ?? null,
+        ];
+    }
+
+    /** The active "unlimited chats" gift from the admin, or null. */
+    public function unlimited(int $userId): ?array
+    {
+        try {
+            $p = $this->app->db->row('SELECT * FROM {user_perks} WHERE user_id = ? AND unlimited = 1', [$userId]);
+        } catch (\PDOException) {
+            return null; // migrate.php not run yet
+        }
+        if (!$p || ($p['unlimited_until'] !== null && strtotime($p['unlimited_until'] . ' UTC') <= $this->app->now())) {
+            return null;
+        }
+        return $p;
+    }
+
+    /** $until = null → unlimited until the admin removes it. */
+    public function setUnlimited(int $userId, bool $on, ?int $until = null, string $note = ''): void
+    {
+        $this->app->db->run(
+            'INSERT INTO {user_perks} (user_id, unlimited, unlimited_until, note, updated_at) VALUES (?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE unlimited = VALUES(unlimited), unlimited_until = VALUES(unlimited_until), note = VALUES(note), updated_at = VALUES(updated_at)',
+            [$userId, $on ? 1 : 0, $on && $until ? $this->app->ts($until) : null, mb_substr($note, 0, 200), $this->app->ts()]
+        );
+    }
+
+    /** Admin gift: today's used free chats are given back. */
+    public function resetToday(int $userId): void
+    {
+        $this->app->db->run('UPDATE {daily_usage} SET successful_chats = bonus_credits_used WHERE user_id = ? AND usage_date = ?', [$userId, $this->app->today()]);
     }
 
     public function hasAvailable(int $userId): bool
@@ -43,7 +82,7 @@ final class QuotaService
         $db->run('INSERT INTO {daily_usage} (user_id, usage_date) VALUES (?, ?) ON DUPLICATE KEY UPDATE id = id', [$userId, $day]);
         $row = $db->row('SELECT id, successful_chats, bonus_credits_used FROM {daily_usage} WHERE user_id = ? AND usage_date = ? FOR UPDATE', [$userId, $day]);
         $freeUsed = (int) $row['successful_chats'] - (int) $row['bonus_credits_used'];
-        if ($freeUsed < $this->app->settings->int('daily_free_chats')) {
+        if ($freeUsed < $this->app->settings->int('daily_free_chats') || $this->unlimited($userId)) {
             $db->run('UPDATE {daily_usage} SET successful_chats = successful_chats + 1 WHERE id = ?', [$row['id']]);
             return 'free';
         }

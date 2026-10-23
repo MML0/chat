@@ -307,3 +307,49 @@ CREATE TABLE IF NOT EXISTS hs_error_logs (
   PRIMARY KEY (id),
   KEY hs_ix_errors_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------------
+-- v1.1 (admin panel). New tables only: nothing above changes, so the previous
+-- version keeps working on the same database (rollback = old files).
+-- ---------------------------------------------------------------------------
+
+-- Request performance, one row per minute and source (webhook / cron / panel).
+-- Kept 14 days. Feeds the panel's server page (requests/min, response time, Bale latency).
+CREATE TABLE IF NOT EXISTS hs_request_metrics (
+  minute_at DATETIME NOT NULL,
+  source VARCHAR(8) NOT NULL,
+  requests INT UNSIGNED NOT NULL DEFAULT 0,
+  total_ms INT UNSIGNED NOT NULL DEFAULT 0,
+  max_ms INT UNSIGNED NOT NULL DEFAULT 0,
+  slow INT UNSIGNED NOT NULL DEFAULT 0,
+  errors INT UNSIGNED NOT NULL DEFAULT 0,
+  bale_calls INT UNSIGNED NOT NULL DEFAULT 0,
+  bale_ms INT UNSIGNED NOT NULL DEFAULT 0,
+  bale_errors INT UNSIGNED NOT NULL DEFAULT 0,
+  db_queries INT UNSIGNED NOT NULL DEFAULT 0,
+  max_memory_kb INT UNSIGNED NOT NULL DEFAULT 0,
+  PRIMARY KEY (minute_at, source)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Gifts from the admin that the quota checks: unlimited chats until a date (NULL = never ends).
+CREATE TABLE IF NOT EXISTS hs_user_perks (
+  user_id INT UNSIGNED NOT NULL,
+  unlimited TINYINT(1) NOT NULL DEFAULT 0,
+  unlimited_until DATETIME NULL,
+  note VARCHAR(200) NULL,
+  updated_at DATETIME NOT NULL,
+  PRIMARY KEY (user_id),
+  CONSTRAINT hs_fk_perks_user FOREIGN KEY (user_id) REFERENCES hs_users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Everything done in the admin panel (who, what, when, from which IP).
+CREATE TABLE IF NOT EXISTS hs_admin_log (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  action VARCHAR(32) NOT NULL,
+  target VARCHAR(64) NULL,
+  details VARCHAR(500) NULL,
+  ip VARCHAR(45) NULL,
+  created_at DATETIME NOT NULL,
+  PRIMARY KEY (id),
+  KEY hs_ix_adminlog_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

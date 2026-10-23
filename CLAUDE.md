@@ -18,6 +18,7 @@ This repo is for **Bale (بله) messenger bots in plain PHP**. The first one pl
 | path | what |
 |---|---|
 | `hamsobat/` | **The random chat bot (هم‌صحبت).** Read `hamsobat/README.md` first. Tests: `php hamsobat/tests/run.php`, `php hamsobat/tests/concurrency.php`, `php hamsobat/tests/e2e/run_e2e.php` |
+| `hamsobat/panel/` | Web admin panel (Persian, RTL). Pages are `panel/views/*.php`; queries in `services/PanelData.php`, actions in `services/PanelActions.php`, login in `services/PanelAuth.php`. Preview with `tests/demo_seed.php` |
 | `starter/src/Bale.php` | API client (form first, JSON fallback), buttons, copyMessage, file download |
 | `starter/src/Payments.php` | Wallet payments: invoice → pre-checkout → successful_payment → inquireTransaction |
 | `starter/src/Premium.php` | Premium time rows (payment / admin / referral), paid-only checks, fail closed |

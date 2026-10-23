@@ -56,3 +56,6 @@ Both **form fields** and **JSON** bodies work for normal methods ✔. For **paym
 - A user who blocked the bot makes every send fail (`ok:false`). Treat that as "user left": end their chat and stop messaging them.
 - Ids are big numbers. Store them as `BIGINT`, not `INT`.
 - Prices are in **rial** (1 toman = 10 rial). `2,380,000` rial = 238,000 toman.
+- **No date picker for bots:** reply-keyboard buttons can only be text, `request_contact` or `request_location`; nothing returns a date. Build a picker from inline buttons (year → month → day, edited in place). Hamsobat does this in `hamsobat/handlers/profile.php`.
+- **Fields Bale may reject as INVALID INPUT:** `is_persistent` (reply keyboard) and `link_preview_options`. Buttons with empty or blank text are refused too, so never pad a calendar grid with blank buttons. Seen by [another Bale bot project](https://github.com/ftmehoseini/RastaTTBot/pull/1).
+- **Editing:** prefer `editMessageText` (with a new `reply_markup`) over `editMessageReplyMarkup`, which not every Telegram-compatible platform implements.

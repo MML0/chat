@@ -18,7 +18,7 @@ $line = function (bool $ok, string $label, string $extra = '') {
 };
 $placeholder = fn ($v) => $v === '' || preg_match('~CHANGE_ME|YOUR_|XXXX~', (string) $v);
 
-echo "== Server\n";
+echo "== Hamsobat " . HAMSOBAT_VERSION . "\n\n== Server\n";
 $line(PHP_VERSION_ID >= 80200, 'PHP ' . PHP_VERSION, PHP_VERSION_ID >= 80200 ? '' : 'PHP 8.2+ needed');
 foreach (['curl', 'pdo_mysql', 'mbstring', 'json'] as $ext) {
     $line(extension_loaded($ext), "extension {$ext}");
@@ -89,6 +89,12 @@ if ($app) {
     foreach ($app->db->all('SELECT id, bale_user_id, nickname, created_at FROM {users} ORDER BY id DESC LIMIT 5') as $u) {
         echo "  #{$u['id']} bale id {$u['bale_user_id']} " . ($u['nickname'] ?? '(no profile yet)') . " {$u['created_at']} UTC\n";
     }
+}
+
+if (PHP_SAPI !== 'cli') {
+    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https';
+    echo "\n== Admin panel\n  " . ($https ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . rtrim(dirname($_SERVER['SCRIPT_NAME']), '/') . "/panel/\n";
+    echo '  login: admin.password' . (($config['panel']['two_factor'] ?? true) ? ' + a code the bot sends to admin.ids in Bale' : ' only (two_factor is off)') . "\n";
 }
 
 if (!empty($_GET['setwebhook']) && PHP_SAPI !== 'cli') {

@@ -10,7 +10,10 @@ A Bale bot in plain PHP + MySQL. Everything happens inside Bale: messages, the r
 - **Access:** a required channel (checked on the server) and a required first referral.
 - **Quota:** daily free chats plus credits earned from referrals.
 - **Anonymous inbox:** a personal link (`?start=msg…`) that opens anonymous conversations with replies.
-- **Admin:** commands inside Bale, plus a cleanup that runs without cron.
+- **Admin:** a **web admin panel** (`panel/`) and commands inside Bale, plus a cleanup that runs without cron.
+- **Birth date:** chosen with a Shamsi picker made of buttons (year → month → day); typing still works.
+
+![Admin panel dashboard](docs/panel-dashboard.png)
 
 ---
 
@@ -29,6 +32,8 @@ hamsobat/
   services/          BaleApi, MatchingService, QuotaService, ReferralService, MessageRelay,
                      Requirements, Moderation, Settings, Ui (all labels), Text (validation, Jalali) …
   admin/commands.php admin commands
+  panel/             web admin panel: index.php (pages), api.php (live JSON), media.php (photos/voices
+                     from Bale), views/, assets/ (CSS, JS, Vazirmatn font — no CDN)
   cron/              cleanup.php (every minute, optional), daily_tasks.php (daily, optional)
   storage/logs/      JSON log files (web access denied)
   tests/             run.php, concurrency.php, e2e/ (not uploaded to the host)
@@ -43,16 +48,23 @@ hamsobat/
    - **bale.bot_token**, and **bale.bot_username** without `@`
    - **bale.webhook_secret**, **admin.password**, **cron_secret:** long random strings, all different
    - **admin.ids:** your Bale user id. Not known yet? Leave it, finish the steps, send `/start` to the bot, then open `check.php`. It lists the newest users with their Bale ids.
-4. **Tables:** open `https://YOUR.SITE/hamsobat/migrate.php?pass=ADMIN_PASSWORD`. You should see ✔ for 20 tables.
+4. **Tables:** open `https://YOUR.SITE/hamsobat/migrate.php?pass=ADMIN_PASSWORD`. You should see ✔ for 23 tables.
 5. **Self-test:** open `https://YOUR.SITE/hamsobat/check.php?pass=ADMIN_PASSWORD`. Every line should be ✔.
 6. **Webhook:** open `https://YOUR.SITE/hamsobat/check.php?pass=ADMIN_PASSWORD&setwebhook=1`. The bot now runs from this folder.
 7. **Required channel:**
    - Make the bot an **admin** of the channel; without that, membership can't be checked.
    - In Bale, send the bot: `/setchannel @your_channel https://ble.ir/your_channel`. It tests the check right away.
    - To turn the requirement off: `/setchannel off`.
-8. **Optional cron:** call `https://YOUR.SITE/hamsobat/cron/cleanup.php?k=CRON_SECRET` every minute, from the panel's cron or a free external cron service. Without it, the same work runs inside the webhook while people use the bot. The only difference: a lone searcher gets "nobody found" a bit late.
+8. **Admin panel:** open `https://YOUR.SITE/hamsobat/panel/`. Enter the admin password; the bot then sends a 6-digit code to your Bale account (`admin.ids`). Enter it and you're in.
+9. **Optional cron:** call `https://YOUR.SITE/hamsobat/cron/cleanup.php?k=CRON_SECRET` every minute, from the panel's cron or a free external cron service. Without it, the same work runs inside the webhook while people use the bot. The only difference: a lone searcher gets "nobody found" a bit late.
 
 HTTPS is required by Bale for webhooks.
+
+### Upgrading from 1.0 to 1.1 (admin panel)
+1. Upload the new zip over the old folder. It contains no `config.php`, so yours stays.
+2. Run `migrate.php?pass=…` once. It **only adds** 3 new tables (`request_metrics`, `user_perks`, `admin_log`); existing tables are not touched. That means the 1.0 files still work on the same database if you ever roll back.
+3. Optional, in `config.php`: `'panel' => ['two_factor' => true, 'session_hours' => 12]`. Without it these defaults apply.
+4. Open `panel/` and log in.
 
 ## 3. Configuration
 
@@ -79,7 +91,33 @@ HTTPS is required by Bale for webhooks.
 
 Examples: `/set daily_free_chats 7`, `/feature inbox off`, `/maintenance on`.
 
-## 4. Admin commands (only for `admin.ids`)
+## 4. Admin panel (web) and admin commands
+
+**Web panel** (`https://YOUR.SITE/hamsobat/panel/`). It's in Persian, works in dark and light themes and on a phone, and loads nothing from outside your host.
+
+| page | what you see and do |
+|---|---|
+| 📊 **Dashboard** | Users, online now, people searching or chatting, chats and messages today vs yesterday, average chat length, 30-day trend, busiest hours (weekday × hour heatmap), gender, ages, cities, interests, bot response time. The **most active users**, each with a one-click **🎁 +50 credits** and **💎 7 days unlimited**. The latest chats. |
+| ⚡ **Live** | Every message relayed between users appears a few seconds later (sender ➜ receiver, text, photo, voice). Can be paused. Shows active chats and live counters. |
+| 👥 **Users** | Search by nickname, name, city, Bale id or #id. Filters: online, incomplete, suspended, no-referral, unlimited, gender. Sort by newest, last seen, most chats, most messages, most invites, most credits. |
+| 👤 **User** | **Profile:** photo, display name, nickname, birth date (Shamsi + age), gender, wanted gender, city, bio, interests, privacy, joined, last seen, inviter, links. **History:** activity chart, all chats, invited friends, credit history, reports. **Actions:** gift credits (+10 … +1000 or any number), unlimited chats (1 / 7 / 30 days / forever), unlock without referral, refill today's free chats, message the user from the bot, end their chat, suspend (1 h / 24 h / 7 days / forever), rename, delete photo, bio or city. |
+| 💬 **Chats** | All chats, or only active or reported ones. Opening one shows **the full conversation as chat bubbles**: photos, voice players and videos inline, filtered messages marked in red, and live updates while the chat is still active. |
+| 📩 **Anonymous inbox** | Every anonymous message, with its real sender visible only to you, and each conversation as a thread. |
+| 🚩 **Reports** | Each report with its reason, the last messages, how many people reported that user, and suspend / resolve / dismiss buttons. |
+| ⚙️ **Settings** | Every setting in groups, with switches, numbers and media-type chips. Changed values are marked; a "save all" bar appears when you edit. |
+| 🖥 **Server** | **Host:** gauges for CPU load, server RAM (and your account's RAM limit if the host shows it), disk, OPcache. **Bot performance:** requests per minute and hour, average and maximum response time, slow requests, errors, Bale API latency and a live ping, DB queries per request. **Health:** webhook status, pending updates, last webhook error. **Info:** PHP, extensions, MySQL version, connections, size and rows of every table. **Buttons:** "connect the bot to this folder" (setWebhook) and "run cleanup". |
+| 🧾 **Logs** | Errors (secrets redacted) and an audit log of every panel action (who, what, when, IP). |
+
+**Security:**
+- **Login:** the admin password, then a code from the bot in Bale. Turn the code off with `panel.two_factor = false`.
+- **Brute force:** 5 wrong tries per IP per 15 minutes.
+- **Session:** the cookie is HttpOnly and SameSite=Strict, and you're logged out after 12 idle hours.
+- **Forms:** every form carries a CSRF token.
+- **Headers:** a strict Content-Security-Policy, and no framing.
+- **Media:** fetched with the bot token on the server; the token never reaches the browser.
+- **Users are told:** the bot's guide says messages are stored for safety, may be reviewed by the admin, and are deleted after `message_retention_days`. Raise that setting if you want to keep chats longer.
+
+**Bot commands** (in Bale, only for `admin.ids`). Same powers, for when you're away from a computer:
 
 - **Overview:**
   - `/admin`: help and stats
@@ -127,6 +165,10 @@ Admins skip the channel and referral requirements, so the owner can test right a
   - **Optional:** city, bio and photo can each be hidden in Settings.
   - **Retention:** chat messages are kept for `message_retention_days` for report review, then deleted. The guide tells users this.
 - **Idempotency:** each update's `update_id` + body hash is stored; a re-delivered update is ignored.
+- **Performance metrics:**
+  - Each webhook request records its duration, Bale calls and latency, DB queries and peak memory into a per-minute row (`{request_metrics}`, kept 14 days).
+  - That's one cheap upsert per request. The Server page draws its charts from it.
+- **Unlimited chats** (`{user_perks}`): a gift from the admin that the quota checks. Chats are still counted, but never limited.
 - **Search timeouts and idle chats:** `webhook.php` runs a throttled cleanup (at most every 10 s) on every update, and `cron/cleanup.php` does the same on demand.
 
 ## 6. Bale API: what was verified
@@ -141,6 +183,7 @@ docs.bale.ai could not be reached from the build machine. The methods were check
 | `getChatMember` status names (`member`, `administrator`, `creator`, `left`, `kicked`) | Telegram names, assumed |
 | `my_chat_member` update when a user blocks the bot | handled if Bale sends it; otherwise the next failed send ends the chat |
 | colored buttons | not used |
+| a native **date picker** for bots | **does not exist** in Bale's bot API: reply buttons can only share a contact or a location, and nothing returns a date. The bot therefore uses a Shamsi picker made of glass buttons (year → month → day, edited in one message). Every button has a visible label, because Bale refuses empty ones, and no `is_persistent` is sent, because Bale rejects it as INVALID INPUT ([a Bale bot project ran into both](https://github.com/ftmehoseini/RastaTTBot/pull/1)). |
 
 The code always sends form fields first (like the old working bot), then JSON as a fallback.
 
@@ -164,6 +207,7 @@ If any step fails, send `/errors` to the bot. It shows Bale's exact answer.
 - [ ] `setwebhook=1` → ✔ (HTTPS)
 - [ ] Bot is an admin of the required channel; `/setchannel` reports ✔
 - [ ] The first-test list above, on the real bot
+- [ ] `panel/` → log in with password + Bale code → Server page: everything green
 - [ ] Optional: cron for `cron/cleanup.php` (every minute) and `cron/daily_tasks.php` (daily)
 - [ ] No old helper files on the host (file editors, upload forms)
 - [ ] `tests/` is not uploaded (the zip doesn't contain it)
@@ -178,8 +222,12 @@ If any step fails, send `/errors` to the bot. It shows Bale's exact answer.
 They need a MySQL/MariaDB database whose name contains `test` (and `e2e` for the end-to-end run). The defaults are `127.0.0.1:3307`, user `hs`/`hs`; override them with `HS_TEST_DB_*` environment variables.
 
 ```sh
-php tests/run.php              # 204 checks: validation, registration, referrals + abuse, channel gate,
-                               # quota boundaries, matching rules, block, relay, reports, inbox, admin
+php tests/run.php              # 263 checks: validation, registration, date picker, referrals + abuse,
+                               # channel gate, quota boundaries, unlimited, matching rules, block, relay,
+                               # reports, inbox, admin, metrics, every panel query and panel action
 php tests/concurrency.php 40   # 50 parallel processes searching at once: invariants hold
-php tests/e2e/run_e2e.php      # real webhook.php / migrate.php / check.php / cron over HTTP + fake Bale
+php tests/e2e/run_e2e.php      # 78 checks over HTTP + fake Bale: webhook.php, migrate.php, check.php, cron,
+                               # panel login with the Bale code, every page, CSRF, actions, live API, media
+# Preview the panel with demo data (test database only):
+HAMSOBAT_CONFIG=tests/e2e/state/config.php php tests/demo_seed.php
 ```

@@ -35,6 +35,12 @@ return [
     // Secret for cron/cleanup.php?k=… and cron/daily_tasks.php?k=… (external cron services).
     'cron_secret' => $env('HS_CRON_SECRET', 'CHANGE_ME_RANDOM_CRON_SECRET'),
 
+    // Admin panel: https://YOUR.SITE/hamsobat/panel/ (login = admin.password above).
+    'panel' => [
+        'two_factor'    => true,  // after the password, the bot sends a 6-digit code to admin.ids in Bale
+        'session_hours' => 12,    // logged out after this long without activity
+    ],
+
     'timezone' => 'Asia/Tehran',               // daily quotas reset at midnight in this timezone
     'log_dir'  => __DIR__ . '/storage/logs',   // also protected by storage/.htaccess
 

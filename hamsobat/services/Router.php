@@ -11,7 +11,7 @@ final class Router
 {
     /** callback_data prefix → handler */
     private const CALLBACKS = [
-        'rg' => ProfileHandler::class, 'pe' => ProfileHandler::class, 'pf' => ProfileHandler::class,
+        'rg' => ProfileHandler::class, 'pe' => ProfileHandler::class, 'pf' => ProfileHandler::class, 'bd' => ProfileHandler::class,
         'fd' => MatchingHandler::class, 'fg' => MatchingHandler::class, 'sc' => MatchingHandler::class,
         'ch' => ChatHandler::class, 'rr' => ChatHandler::class, 'rd' => ChatHandler::class,
         'rq' => ReferralHandler::class, 'inv' => ReferralHandler::class,

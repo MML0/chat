@@ -23,6 +23,9 @@ final class BaleApi
         'video_note' => ['sendVideoNote', 'video_note'],
     ];
 
+    /** This request's Bale traffic: calls, total milliseconds, failed answers. */
+    public array $stats = ['calls' => 0, 'ms' => 0.0, 'errors' => 0];
+
     private string $base;
     /** @var callable fn(string $url, string|array $body, array $headers, int $timeout): array{0:int,1:string|false} */
     private $transport;
@@ -118,11 +121,18 @@ final class BaleApi
 
     private function post(string $url, $body, array $headers, int $timeout): ?array
     {
+        $t = hrtime(true);
         [$code, $raw] = ($this->transport)($url, $body, $headers, $timeout);
+        $this->stats['calls']++;
+        $this->stats['ms'] += (hrtime(true) - $t) / 1e6;
         if ($raw === false || $raw === '') {
+            $this->stats['errors']++;
             return null; // network error: we do not know whether Bale processed it
         }
         $json = json_decode($raw, true);
+        if (empty($json['ok'])) {
+            $this->stats['errors']++;
+        }
         return is_array($json)
             ? $json + ['_http' => $code]
             : ['ok' => false, '_http' => $code, 'description' => mb_substr((string) $raw, 0, 200)];

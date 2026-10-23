@@ -18,8 +18,10 @@ if (PHP_SAPI !== 'cli' && ($secret === '' || !hash_equals($secret, (string) ($_G
 date_default_timezone_set('UTC');
 
 try {
+    $started = hrtime(true);
     $app = Hamsobat\App::fromConfig($config);
     $r = $app->maintenance()->run();
+    Hamsobat\Metrics::record($app, 'cron', (hrtime(true) - $started) / 1e6);
     $app->settings->internal('_tick', (string) $app->now(), $app->now());
     echo json_encode($r) . "\n";
 } catch (Throwable $e) {

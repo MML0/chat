@@ -50,7 +50,7 @@ final class StartHandler extends Handler
     public function guide(array $user): void
     {
         $s = $this->app->settings;
-        $this->say($user, Ui::guide($s->int('daily_free_chats'), $s->int('referral_reward_credits')), $this->keyboardFor($user));
+        $this->say($user, Ui::guide($s->int('daily_free_chats'), $s->int('referral_reward_credits'), $s->int('message_retention_days')), $this->keyboardFor($user));
     }
 
     public function home(array $user, string $text = '🏠 منوی اصلی'): void

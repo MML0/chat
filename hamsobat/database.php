@@ -11,6 +11,9 @@ use PDOStatement;
 
 final class Database
 {
+    /** Number of queries this request (shown on the panel's performance charts). */
+    public int $queries = 0;
+
     public function __construct(public readonly PDO $pdo, public readonly string $prefix)
     {
         if (!preg_match('~^[A-Za-z0-9_]{1,20}$~', $prefix)) {
@@ -44,6 +47,7 @@ final class Database
 
     public function run(string $sql, array $params = []): PDOStatement
     {
+        $this->queries++;
         $stmt = $this->pdo->prepare($this->sql($sql));
         $stmt->execute($params);
         return $stmt;

@@ -64,7 +64,7 @@ final class ProfileHandler extends Handler
         $text = match ($step) {
             'name'      => $n(0) . "اسمت چیه؟\n(توی پروفایلت نشون داده می‌شه؛ لازم نیست اسم واقعیت باشه)",
             'nick'      => $n(1) . "یک لقب یکتا برای خودت انتخاب کن.\nمثال: Moon یا ماه_شب\n(۳ تا ۲۰ کاراکتر: حروف، عدد و _)",
-            'birth'     => $n(2) . "تاریخ تولدت رو بنویس (شمسی).\nمثال: ۱۳۸۰/۰۵/۱۲\n🔒 تاریخ دقیق به کسی نشون داده نمی‌شه؛ فقط سنت.",
+            'birth'     => $n(2) . "🎂 سال تولدت رو انتخاب کن 👇\n(یا تاریخ رو تایپ کن، مثلاً ۱۳۸۰/۰۵/۱۲)\n🔒 تاریخ دقیق به کسی نشون داده نمی‌شه؛ فقط سنت.",
             'gender'    => $n(3) . 'جنسیتت؟',
             'pref'      => $n(4) . 'دوست داری با کی هم‌صحبت بشی؟',
             'photo'     => '📸 یک عکس برای پروفایلت بفرست' . ($reg ? ' (اختیاری)' : ''),
@@ -73,6 +73,7 @@ final class ProfileHandler extends Handler
             'interests' => "🎯 علاقه‌مندی‌هات چیه؟ با ویرگول جدا کن (حداکثر ۵ تا" . ($reg ? '، اختیاری' : '') . ")\nمثال: موسیقی، فیلم، کتاب",
         };
         $rows = match ($step) {
+            'birth'  => $this->yearRows(null),
             'gender' => [[['👩 دختر', "{$p}:g:f"], ['👨 پسر', "{$p}:g:m"]]],
             'pref'   => [[['👩 دختر', "{$p}:p:f"], ['👨 پسر', "{$p}:p:m"]], [['🎲 فرقی نمی‌کنه', "{$p}:p:any"]]],
             default  => [],
@@ -168,6 +169,10 @@ final class ProfileHandler extends Handler
         $users = $this->app->users();
         [$state] = $users->state($user);
 
+        if ($parts[0] === 'bd') {
+            return $this->datePicker($user, $state, $parts, $cb);
+        }
+
         switch ($parts[0] . ':' . ($parts[1] ?? '')) {
             case 'rg:g':
             case 'rg:p':
@@ -244,6 +249,114 @@ final class ProfileHandler extends Handler
         return null;
     }
 
+    // ------------------------------------------------------------------ birth date picker
+    // Bale has no native date picker for bots (reply buttons can only share a contact or a
+    // location), so this is a Shamsi picker made of glass buttons: year → month → day, edited
+    // in place. Every button has a visible label (Bale refuses empty ones). Typing still works.
+
+    private const MONTHS = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
+    private const YEARS_PER_PAGE = 12;
+
+    /** [youngest, oldest] allowed Jalali birth years. */
+    private function yearRange(): array
+    {
+        [$cy] = Text::gregorianToJalali(...array_map('intval', explode('-', $this->app->today())));
+        $s = $this->app->settings;
+        return [$cy - max(13, $s->int('min_age')), $cy - max(13, $s->int('max_age'))];
+    }
+
+    /** Year buttons, newest first, 12 per page. $start = first (newest) year of the page. */
+    private function yearRows(?int $start): array
+    {
+        [$youngest, $oldest] = $this->yearRange();
+        $start = min($youngest, max($oldest, $start ?? $youngest));
+        $rows = [];
+        $row = [];
+        for ($y = $start; $y > $start - self::YEARS_PER_PAGE && $y >= $oldest; $y--) {
+            $row[] = [Text::fa($y), "bd:y:{$y}"];
+            if (count($row) === 3) {
+                $rows[] = $row;
+                $row = [];
+            }
+        }
+        if ($row) {
+            $rows[] = $row;
+        }
+        $nav = [];
+        if ($start - self::YEARS_PER_PAGE >= $oldest) {
+            $nav[] = ['« قدیمی‌تر', 'bd:yp:' . ($start - self::YEARS_PER_PAGE)];
+        }
+        if ($start < $youngest) {
+            $nav[] = ['جدیدتر »', 'bd:yp:' . min($youngest, $start + self::YEARS_PER_PAGE)];
+        }
+        if ($nav) {
+            $rows[] = $nav;
+        }
+        return $rows;
+    }
+
+    private function pickerMarkup(array $rows, string $mode): array
+    {
+        if ($mode === 'edit') {
+            $rows[] = [['❌ لغو', 'pe:x']];
+        }
+        return Ui::inline($rows);
+    }
+
+    private function datePicker(array $user, string $state, array $parts, array $cb): string|array|null
+    {
+        if ($state !== 'reg:birth' && $state !== 'edit:birth') {
+            return 'این سؤال قبلاً جواب داده شده.';
+        }
+        $mode = strstr($state, ':', true);
+        [$youngest, $oldest] = $this->yearRange();
+        $year = (int) ($parts[2] ?? 0);
+        if (($parts[1] ?? '') !== 'yp' && ($year > $youngest || $year < $oldest)) {
+            return null;
+        }
+        switch ($parts[1] ?? '') {
+            case 'yp': // another page of years
+                $this->editOrSend($user, $cb, "🎂 سال تولدت رو انتخاب کن 👇\n(یا تاریخ رو تایپ کن، مثلاً ۱۳۸۰/۰۵/۱۲)", $this->pickerMarkup($this->yearRows($year), $mode));
+                return null;
+
+            case 'y': // year chosen → months
+                $rows = array_map(
+                    fn ($chunk) => array_map(fn ($m) => [self::MONTHS[$m - 1], "bd:m:{$year}:{$m}"], $chunk),
+                    array_chunk(range(1, 12), 3)
+                );
+                $page = $youngest - intdiv($youngest - $year, self::YEARS_PER_PAGE) * self::YEARS_PER_PAGE;
+                $rows[] = [['🔙 تغییر سال', "bd:yp:{$page}"]];
+                $this->editOrSend($user, $cb, '🎂 سال ' . Text::fa($year) . " ✅\nماه تولدت؟", $this->pickerMarkup($rows, $mode));
+                return null;
+
+            case 'm': // month chosen → days (only real days: no empty buttons)
+                $month = (int) ($parts[3] ?? 0);
+                if ($month < 1 || $month > 12) {
+                    return null;
+                }
+                $days = $month <= 6 ? 31 : ($month <= 11 ? 30 : (Text::gregorianToJalali(...Text::jalaliToGregorian($year, 12, 30)) === [$year, 12, 30] ? 30 : 29));
+                $rows = array_map(
+                    fn ($chunk) => array_map(fn ($d) => [Text::fa($d), "bd:d:{$year}:{$month}:{$d}"], $chunk),
+                    array_chunk(range(1, $days), 7)
+                );
+                $rows[] = [['🔙 تغییر ماه', "bd:y:{$year}"]];
+                $this->editOrSend($user, $cb, '🎂 ' . self::MONTHS[$month - 1] . ' ' . Text::fa($year) . "\nروز تولدت؟", $this->pickerMarkup($rows, $mode));
+                return null;
+
+            case 'd': // day chosen → save
+                $s = $this->app->settings;
+                [$date, $error] = Text::birthDate(($parts[2] ?? '') . '/' . ($parts[3] ?? '') . '/' . ($parts[4] ?? ''), $this->app->today(), max(13, $s->int('min_age')), $s->int('max_age'));
+                if ($error !== null) {
+                    return ['text' => $error, 'alert' => true];
+                }
+                $this->app->users()->update((int) $user['id'], ['birth_date' => $date]);
+                $this->editOrSend($user, $cb, '🎂 تاریخ تولد: ' . Text::jalaliDate($date) . ' (' . Text::fa(Text::age($date, $this->app->today())) . ' ساله) ✅');
+                $mode === 'reg' ? $this->advance($user, 'birth') : $this->edited($user);
+                return '✅';
+        }
+        return null;
+    }
+
     /** 👤 پروفایل من */
     public function showMine(array $user): void
     {
@@ -254,7 +367,9 @@ final class ProfileHandler extends Handler
         $q = $this->app->quota()->status((int) $user['id']);
         $refs = $this->app->referrals();
         $text = "👤 پروفایل من\n\n" . $this->ownCard($user)
-            . "\n\n💬 چت‌های رایگان امروز: " . Text::fa($q['free_left']) . ' از ' . Text::fa($q['limit']) . ' باقی‌مونده'
+            . ($q['unlimited']
+                ? "\n\n💎 چت نامحدود" . ($q['unlimited_until'] ? ' تا ' . Text::jalaliDate(substr($this->app->today(strtotime($q['unlimited_until'] . ' UTC')), 0, 10)) : '') . ' ✨'
+                : "\n\n💬 چت‌های رایگان امروز: " . Text::fa($q['free_left']) . ' از ' . Text::fa($q['limit']) . ' باقی‌مونده')
             . "\n🎁 اعتبار چت اضافه: " . Text::fa($q['credits'])
             . "\n👥 دعوت‌های موفق: " . Text::fa($refs->qualifiedCount((int) $user['id']));
         $markup = Ui::inline([[['✏️ ویرایش پروفایل', 'pf:edit'], ['🔒 حریم خصوصی', 'st:home']]]);

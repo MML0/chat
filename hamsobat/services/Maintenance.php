@@ -77,7 +77,32 @@ final class Maintenance
             )->rowCount(),
             'errors'   => $db->run('DELETE FROM {error_logs} WHERE created_at < ?', [$this->app->ts($now - 30 * 86400)])->rowCount(),
             'views'    => $db->run('DELETE FROM {profile_views} WHERE viewed_at < ?', [$this->app->ts($now - 90 * 86400)])->rowCount(),
+            'metrics'  => $this->quiet(fn () => $db->run('DELETE FROM {request_metrics} WHERE minute_at < ?', [$this->app->ts($now - 14 * 86400)])->rowCount()),
+            'audit'    => $this->quiet(fn () => $db->run('DELETE FROM {admin_log} WHERE created_at < ?', [$this->app->ts($now - 180 * 86400)])->rowCount()),
+            'media'    => $this->purgeMediaCache($now - 7 * 86400),
         ];
+    }
+
+    /** Tables added in v1.1 may not exist until migrate.php runs. */
+    private function quiet(callable $fn): int
+    {
+        try {
+            return (int) $fn();
+        } catch (\Throwable) {
+            return 0;
+        }
+    }
+
+    /** The panel keeps Bale files for 7 days in storage/cache/media. */
+    private function purgeMediaCache(int $before): int
+    {
+        $n = 0;
+        foreach (glob(dirname(__DIR__) . '/storage/cache/media/*') ?: [] as $f) {
+            if (is_file($f) && filemtime($f) < $before && @unlink($f)) {
+                $n++;
+            }
+        }
+        return $n;
     }
 
     /** Numbers for /stats and the daily admin report. */

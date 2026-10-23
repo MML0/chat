@@ -653,6 +653,174 @@ test('Idle chats end automatically', function () {
     ok($w->activeChat(1) === null && contains($w->bale->lastText(2), 'بی‌فعالیتی'), 'ended and told');
 });
 
+echo "\nv1.1: date picker, unlimited, metrics, admin panel\n";
+
+test('Birth date picker: year → month → day, no empty buttons, typing still works', function () {
+    $w = new World();
+    $w->msg(1, '/start');
+    $w->msg(1, Ui::COMPLETE_PROFILE);
+    $w->msg(1, 'سارا');
+    $w->msg(1, 'Sara');
+    $ask = last($w->bale->to(1));
+    $rows = $ask['p']['reply_markup']['inline_keyboard'] ?? [];
+    $labels = array_merge(...array_map(fn ($r) => array_column($r, 'text'), $rows));
+    ok(contains($ask['p']['text'], 'سال تولدت') && count($labels) >= 12 && !in_array('', array_map('trim', $labels), true), 'year buttons with labels');
+    ok(($rows[0][0]['callback_data'] ?? '') === 'bd:y:1386', 'newest allowed year first (1404 − 18; the test clock is Esfand 1404)');
+    $w->cb(1, 'bd:yp:1375');
+    ok(contains(json_encode(last($w->bale->of('editMessageText'))['p'] ?? [], JSON_UNESCAPED_UNICODE), 'bd:y:1375'), 'paging edits the same message');
+    $w->cb(1, 'bd:y:1390');
+    ok(last($w->bale->of('answerCallbackQuery'))['p']['text'] === '' && last($w->bale->calls)['method'] === 'answerCallbackQuery', 'too-young year is ignored');
+    $w->cb(1, 'bd:y:1380');
+    $m = last($w->bale->of('editMessageText'));
+    ok(contains($m['p']['text'], 'ماه تولدت') && count($m['p']['reply_markup']['inline_keyboard']) === 5, '12 months + back');
+    $w->cb(1, 'bd:m:1380:12');
+    $days = array_merge(...array_map(fn ($r) => array_column($r, 'callback_data'), last($w->bale->of('editMessageText'))['p']['reply_markup']['inline_keyboard']));
+    ok(in_array('bd:d:1380:12:29', $days, true) && !in_array('bd:d:1380:12:30', $days, true), 'Esfand 1380 has 29 days');
+    $w->cb(1, 'bd:m:1379:12');
+    $days = array_merge(...array_map(fn ($r) => array_column($r, 'callback_data'), last($w->bale->of('editMessageText'))['p']['reply_markup']['inline_keyboard']));
+    ok(in_array('bd:d:1379:12:30', $days, true), 'leap Esfand 1379 has 30 days');
+    $w->cb(1, 'bd:m:1380:5');
+    $w->cb(1, 'bd:d:1380:5:12');
+    ok($w->user(1)['birth_date'] === '2001-08-03', 'saved 1380/05/12');
+    ok(contains(implode("\n", $w->bale->texts(1)), 'تاریخ تولد: ۱۳۸۰/۰۵/۱۲') && contains($w->bale->lastText(1), 'جنسیتت'), 'confirmed and moved on');
+    $w->cb(1, 'bd:d:1380:5:13');
+    ok($w->user(1)['birth_date'] === '2001-08-03', 'an old picker cannot change it later');
+    $w->cb(1, 'rg:g:f');
+    $w->cb(1, 'rg:p:any');
+    $w->cb(1, 'pe:birth');
+    $w->msg(1, '1379/01/01');
+    ok($w->user(1)['birth_date'] === '2000-03-20', 'typing still works when editing');
+});
+
+test('Unlimited chats gift and "refill today"', function () {
+    $w = new World(['daily_free_chats' => 1, 'rematch_cooldown_minutes' => 0]);
+    $a = $w->ready(1, 'Alpha');
+    $w->ready(2, 'Beta');
+    $w->app->quota()->setUnlimited((int) $a['id'], true, $w->time + 86400);
+    for ($i = 0; $i < 3; $i++) {
+        $w->msg(1, Ui::FIND);
+        $w->app->quota()->resetToday((int) $w->user(2)['id']);
+        $w->msg(2, Ui::FIND);
+        ok($w->activeChat(1) !== null, 'unlimited chat ' . ($i + 1));
+        $w->msg(1, Ui::END);
+    }
+    $s = $w->app->quota()->status((int) $a['id']);
+    ok($s['unlimited'] && $s['used'] === 3 && $s['credits'] === 0, 'counted but not limited, no credits spent');
+    $w->time += 2 * 86400;
+    ok(!$w->app->quota()->status((int) $a['id'])['unlimited'], 'expires');
+    $w->app->quota()->setUnlimited((int) $a['id'], true);
+    ok($w->app->quota()->status((int) $a['id'])['unlimited'], 'forever');
+    $w->msg(1, Ui::MY_PROFILE);
+    ok(contains($w->bale->lastText(1), 'نامحدود'), 'shown in my profile');
+});
+
+test('Metrics: per-minute aggregation and series', function () {
+    $w = new World();
+    Hamsobat\Metrics::record($w->app, 'webhook', 120.0);
+    Hamsobat\Metrics::record($w->app, 'webhook', 1500.0, true);
+    $w->time += 3600;
+    Hamsobat\Metrics::record($w->app, 'webhook', 80.0);
+    $s = Hamsobat\Metrics::summary($w->app, 120);
+    ok($s['requests'] === 3 && $s['max_ms'] === 1500 && $s['slow'] === 1 && $s['errors'] === 1 && abs($s['avg_ms'] - 566.67) < 1, 'summary');
+    $series = Hamsobat\Metrics::series($w->app, 24, 60);
+    ok(count($series) === 24 && array_sum(array_column($series, 'requests')) === 3 && end($series)['requests'] === 1, 'hourly series');
+});
+
+/** A world with users, chats, messages, inbox, reports for the panel tests. */
+function panel_world(): World
+{
+    $w = new World(['rematch_cooldown_minutes' => 0]);
+    $w->ready(1, 'Alpha');
+    $w->ready(2, 'Beta', 'f');
+    $w->ready(3, 'Gamma', 'f');
+    $w->app->db->run("UPDATE {users} SET city = 'تهران', photo_file_id = 'PIC' WHERE bale_user_id = 2");
+    $w->msg(1, Ui::FIND);
+    $w->msg(2, Ui::FIND);
+    $w->msg(1, 'سلام <b>بتا</b>');
+    $w->media(2, 'photo', [['file_id' => 'PH', 'file_size' => 10]], 'عکس');
+    $w->media(2, 'voice', ['file_id' => 'VO', 'duration' => 3]);
+    $w->msg(1, 'آیدیم @alpha_x');
+    $chat = $w->activeChat(1)['chat_id'];
+    $w->cb(2, "rr:c:{$chat}:har");
+    $w->msg(1, Ui::END);
+    $w->msg(3, '/start msg' . $w->user(1)['inbox_code']);
+    $w->msg(3, 'پیام ناشناس');
+    $w->msg(1, Ui::FIND);
+    $w->msg(3, Ui::FIND);
+    Hamsobat\Metrics::record($w->app, 'webhook', 90.0);
+    return $w;
+}
+
+test('Panel data: every query runs on real data', function () {
+    $w = panel_world();
+    $d = new Hamsobat\PanelData($w->app);
+    $k = $d->kpis();
+    ok($k['users'] === 3 && $k['chats_today'] === 2 && $k['messages_today'] === 3 && $k['filtered_today'] === 1 && $k['open_reports'] === 1 && $k['chatting'] === 1, 'kpis');
+    $daily = $d->daily(30);
+    ok(count($daily) === 30 && end($daily)['chats'] === 2 && end($daily)['users'] === 3, 'daily series ends today');
+    ok(array_sum(array_map('array_sum', $d->heatmap(28))) === 3, 'heatmap counts sent messages');
+    $demo = $d->demographics();
+    ok($demo['genders'] === ['m' => 1, 'f' => 2] && $demo['ages']['۲۶–۳۰'] === 3 && $demo['cities'][0]['label'] === 'تهران', 'demographics');
+    $top = $d->topUsers();
+    ok(count($top) === 3 && $top[0]['nickname'] === 'Alpha' && (int) $top[0]['chats'] === 2, 'top users');
+    [$rows, $total] = $d->users(['q' => 'bet'], 1);
+    ok($total === 1 && $rows[0]['nickname'] === 'Beta', 'search by nickname');
+    [$rows] = $d->users(['q' => '#' . $w->user(3)['id']], 1);
+    ok(($rows[0]['nickname'] ?? '') === 'Gamma', 'search by #id');
+    foreach (['seen', 'chats', 'messages', 'invites', 'credits', 'old'] as $sort) {
+        foreach (['', 'online', 'incomplete', 'suspended', 'unlocked', 'unlimited'] as $status) {
+            $d->users(['sort' => $sort, 'status' => $status, 'gender' => 'f'], 1);
+        }
+    }
+    ok(true, 'every sort and filter runs');
+    $u = $d->user((int) $w->user(1)['id']);
+    ok(count($u['chats']) === 2 && $u['messages'] === 1 && count($u['reports_against']) === 1 && $u['inbox_in'] === 1 && $u['active_chat'] !== null, 'user detail');
+    [$chats, $ct] = $d->chats(['status' => 'active'], 1);
+    ok($ct === 1 && $chats[0]['status'] === 'active', 'active chats');
+    [$reported] = $d->chats(['reported' => 1], 1);
+    $c = $d->chat((int) $reported[0]['id']);
+    ok(count($d->messages((int) $c['id'])) === 4 && count($c['reports']) === 1, 'transcript with the filtered message');
+    $feed = $d->feed(0);
+    ok(count($feed) === 4 && $feed[0]['s_nick'] === 'Alpha' && $feed[0]['r_nick'] === 'Beta', 'live feed with both nicknames');
+    [$inbox] = $d->inbox(1);
+    $t = $d->thread((int) $inbox[0]['session_id']);
+    ok($inbox[0]['s_nick'] === 'Gamma' && count($t['messages']) === 1, 'inbox + thread');
+    [$reports] = $d->reports('open', 1);
+    ok(count($reports) === 1 && count($reports[0]['excerpt']) === 4, 'reports with excerpt');
+    ok(is_array($d->errors()) && is_array($d->audit()) && $d->live()['chatting'] === 1, 'logs and live');
+    $info = new Hamsobat\ServerInfo($w->app);
+    $db = $info->database();
+    ok(count($db['tables']) === 23 && $db['size'] > 0, 'server info: 23 tables');
+    ok(isset($info->system()['cpus'], $info->php()['version']), 'system + php');
+});
+
+test('Panel actions: gifts, unlock, moderation, settings, all audited', function () {
+    $w = panel_world();
+    $act = new Hamsobat\PanelActions($w->app, new Hamsobat\PanelAuth($w->app));
+    $alpha = (int) $w->user(1)['id'];
+    $beta = (int) $w->user(2)['id'];
+    ok($act->run('credit', ['user_id' => $alpha, 'amount' => 500, 'notify' => 1])[0] && $w->app->quota()->status($alpha)['credits'] === 500, '+500 credits');
+    ok(contains($w->bale->lastText(1), '۵۰۰ چت اضافه'), 'user told');
+    ok(!$act->run('credit', ['user_id' => $alpha, 'amount' => 0])[0], 'zero refused');
+    ok($act->run('unlimited', ['user_id' => $beta, 'days' => 7])[0] && $w->app->quota()->status($beta)['unlimited'], 'unlimited 7 days');
+    ok($act->run('unlimited', ['user_id' => $beta, 'days' => -1])[0] && !$w->app->quota()->status($beta)['unlimited'], 'unlimited removed');
+    ok($act->run('unlock', ['user_id' => $beta, 'on' => 1])[0] && $w->user(2)['referral_waived'] == 1, 'unlocked');
+    ok($act->run('nickname', ['user_id' => $beta, 'nickname' => 'Alpha'])[0] === false, 'nickname must stay unique');
+    ok($act->run('nickname', ['user_id' => $beta, 'nickname' => 'Bettie'])[0] && $w->user(2)['nickname'] === 'Bettie', 'renamed');
+    ok($act->run('clear', ['user_id' => $beta, 'field' => 'photo'])[0] && $w->user(2)['photo_file_id'] === null, 'photo cleared');
+    ok($act->run('message', ['user_id' => $beta, 'text' => 'سلام از مدیر'])[0] && contains($w->bale->lastText(2), 'سلام از مدیر'), 'message sent');
+    ok($act->run('end_user_chat', ['user_id' => $alpha])[0] && $w->activeChat(1) === null && contains($w->bale->lastText(3), 'مدیریت'), 'chat ended, both told');
+    ok($act->run('suspend', ['user_id' => $beta, 'hours' => 24])[0] && $w->user(2)['status'] === 'suspended', 'suspended');
+    ok($act->run('unsuspend', ['user_id' => $beta])[0] && $w->user(2)['status'] === 'active', 'unsuspended');
+    $rid = (int) $w->app->db->value('SELECT id FROM {reports}');
+    ok($act->run('report', ['report_id' => $rid, 'status' => 'resolved'])[0] && $w->app->db->value('SELECT status FROM {reports}') === 'resolved', 'report resolved');
+    $r = $act->run('settings', ['s' => ['daily_free_chats' => '۷', 'required_channel' => 'bad channel', 'allowed_types' => ['text', 'photo', 'voice'], 'feature_inbox' => '1', 'block_links' => '1', 'store_message_text' => '1', 'require_channel' => '1', 'referral_requires_channel' => '1', 'notify_admin_reports' => '1', 'feature_media' => '1']]);
+    ok(!$r[0] && contains($r[1], 'required_channel') && $w->app->settings->int('daily_free_chats') === 7, 'valid settings saved (Persian digits ok), invalid one reported');
+    ok($w->app->settings->str('allowed_types') === 'text,photo,voice' && !$w->app->settings->bool('feature_profile_view_notify'), 'checkbox list saved, unchecked switch = off');
+    ok(!$act->run('credit', ['user_id' => 99999, 'amount' => 5])[0], 'unknown user');
+    ok($w->count('SELECT COUNT(*) FROM {admin_log}') === 14, 'every action on a real user audited (14)');
+});
+
 echo "\n" . $GLOBALS['pass'] . ' passed, ' . count($GLOBALS['fail']) . " failed\n";
 foreach ($GLOBALS['fail'] as $f) {
     echo "  ✘ {$f}\n";
