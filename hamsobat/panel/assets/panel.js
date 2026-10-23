@@ -75,11 +75,57 @@
     var flash = document.querySelector('[data-flash]');
     if (flash) { setTimeout(function () { flash.style.transition = 'opacity .6s'; flash.style.opacity = '0'; setTimeout(function () { flash.remove(); }, 700); }, 6000); }
 
+    // A confirm on one submit button (forms with two actions)
+    document.querySelectorAll('[data-confirm-click]').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        if (!window.confirm(b.getAttribute('data-confirm-click'))) { e.preventDefault(); }
+      });
+    });
+
+    composePreview();
+    broadcastProgress();
     settingsBar();
     liveCounters();
     liveFeed();
     liveTranscript();
   });
+
+  // ---------------------------------------------------------------- broadcast: preview + progress
+  function composePreview() {
+    var form = document.querySelector('[data-compose]');
+    var out = document.querySelector('[data-preview]');
+    var btn = document.querySelector('[data-preview-button]');
+    if (!form || !out) { return; }
+    function update() {
+      var t = form.querySelector('[data-preview-src]').value;
+      out.textContent = t || 'متن پیام این‌جا دیده می‌شود…';
+      var label = form.querySelector('[name=button_text]').value;
+      btn.hidden = !label;
+      btn.textContent = label;
+    }
+    form.addEventListener('input', update);
+    update();
+  }
+
+  function broadcastProgress() {
+    var list = document.querySelector('[data-broadcasts]');
+    if (!list || !list.querySelector('[data-status="running"]')) { return; }
+    var timer = setInterval(function () {
+      getJSON('api.php?a=broadcast', function (d) {
+        var running = false;
+        (d.items || []).forEach(function (r) {
+          var li = list.querySelector('[data-bc="' + r.id + '"]');
+          if (!li) { return; }
+          if (li.getAttribute('data-status') !== r.status) { window.location.reload(); return; }
+          var done = r.sent + r.failed;
+          li.querySelector('.meter span').style.width = (r.total ? Math.min(100, Math.round(100 * done / r.total)) : 100) + '%';
+          li.querySelector('[data-bc-count]').textContent = num(r.sent) + ' رسید · ' + num(r.failed) + ' نرسید (ربات را بسته‌اند) · از ' + num(r.total);
+          if (r.status === 'running') { running = true; }
+        });
+        if (!running) { clearInterval(timer); }
+      });
+    }, 2000);
+  }
 
   // ---------------------------------------------------------------- settings: show "save" when something changed
   function settingsBar() {

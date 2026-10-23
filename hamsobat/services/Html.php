@@ -181,7 +181,7 @@ final class Html
         $user = !empty($a['username'])
             ? '<a class="acc-user" dir="ltr" href="https://ble.ir/' . rawurlencode($a['username']) . '" target="_blank" rel="noopener noreferrer">@' . self::e($a['username']) . '</a>'
             : '';
-        return '<span class="acc">🪪 ' . implode(' · ', array_filter([$user, $name !== '' ? '<span>' . self::e($name) . '</span>' : ''])) . '</span>';
+        return '<span class="acc">🪪 ' . implode(' · ', array_filter([$user, $name !== '' ? '<bdi>' . self::e($name) . '</bdi>' : ''])) . '</span>';
     }
 
     public static function reportStatus(string $s): string

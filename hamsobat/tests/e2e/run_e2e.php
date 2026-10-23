@@ -85,7 +85,7 @@ echo "End-to-end (webhook.php over HTTP)\n";
 test('migrate.php creates every table and is safe to run twice', function () use ($root, $env) {
     $a = shell_exec("{$env} php {$root}/migrate.php");
     $b = shell_exec("{$env} php {$root}/migrate.php");
-    ok(substr_count((string) $a, '✔') === 24 && str_contains((string) $b, 'completed successfully'), trim((string) $b));
+    ok(substr_count((string) $a, '✔') === 25 && str_contains((string) $b, 'completed successfully'), trim((string) $b));
     ok(http('migrate.php')[0] === 403 && http('migrate.php?pass=wrong')[0] === 403, 'password required over HTTP');
 });
 
@@ -207,7 +207,7 @@ test('every page renders without errors', function () {
         '' => 'آخرین گفت‌وگوها', '?p=live' => 'پیام‌ها همین حالا', '?p=users' => 'Alpha', '?p=users&q=bet&sort=chats' => 'Beta',
         '?p=user&id=1' => 'هدیه اعتبار', '?p=chats' => 'گفت‌وگو', '?p=chats&status=active' => 'گفت‌وگو', '?p=chat&id=1' => 'سلام از بتا',
         '?p=inbox' => 'پیام‌های ناشناس', '?p=reports' => 'گزارش', '?p=reports&status=resolved' => 'گزارش', '?p=settings' => 'daily_free_chats',
-        '?p=server' => 'دیتابیس', '?p=logs' => 'کارهای انجام‌شده', '?p=nope' => 'روند ۳۰ روز', '?p=user&id=999' => 'کاربر پیدا نشد',
+        '?p=server' => 'دیتابیس', '?p=logs' => 'کارهای انجام‌شده', '?p=broadcast' => 'ارسال برای همه', '?p=nope' => 'روند ۳۰ روز', '?p=user&id=999' => 'کاربر پیدا نشد',
     ];
     foreach ($pages as $q => $needle) {
         [$code, $body, , $headers] = panel($q);
@@ -250,6 +250,20 @@ test('live API, transcript polling and media proxy', function () {
     [$code2, $img2] = panel('media.php?u=1');
     ok($code2 === 200 && $img2 === $img, 'second time from the disk cache');
     ok(panel('media.php?m=99999')[0] === 404, 'unknown media → 404');
+});
+
+test('broadcast from the panel reaches every user', function () {
+    [, $page] = panel('?p=broadcast');
+    $csrf = csrf_of($page);
+    [$code] = panel('', ['_csrf' => $csrf, 'action' => 'broadcast', 'text' => 'اطلاعیه آزمایشی 📢', 'audience' => 'all', 'button_text' => 'کانال', 'button_url' => 'https://ble.ir/x', 'back' => 'p=broadcast']);
+    ok($code === 303, 'created');
+    $j = json_decode(panel('api.php?a=broadcast')[1], true);
+    ok(($j['items'][0]['status'] ?? '') === 'done' && ($j['items'][0]['sent'] ?? 0) === 2, 'sent to both users while the page polls');
+    $got = array_filter(requests(), fn ($r) => $r['method'] === 'sendMessage' && ($r['body']['text'] ?? '') === 'اطلاعیه آزمایشی 📢');
+    $markup = json_decode((string) (array_values($got)[0]['body']['reply_markup'] ?? '{}'), true);
+    ok(count($got) === 2 && ($markup['inline_keyboard'][0][0]['url'] ?? '') === 'https://ble.ir/x', 'two messages with the button');
+    [, $body] = panel('?p=broadcast');
+    ok(str_contains($body, 'تمام شد'), 'shown as done');
 });
 
 test('logout ends the session', function () {

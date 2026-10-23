@@ -13,6 +13,7 @@ final class AdminHandler extends Handler
         . "/settings – همه تنظیمات\n"
         . "/set <نام> <مقدار> – تغییر تنظیم (مثال: /set daily_free_chats 7)\n"
         . "/setchannel <@کانال> <لینک> – کانال اجباری (/setchannel off = خاموش)\n"
+        . "/channeltest – عیب‌یابی کانال (یا یک پست کانال را برای ربات فوروارد کنید)\n"
         . "/feature <inbox|media|profile_view_notify> <on|off>\n"
         . "/maintenance <on|off> – حالت تعمیر\n"
         . "/reports – گزارش‌های باز\n"
@@ -77,10 +78,11 @@ final class AdminHandler extends Handler
                     return true;
                 }
                 $app->settings->set('require_channel', '1', $app->now());
-                $res = $app->bale->getChatMember($args[0], (int) $admin['bale_user_id']);
-                $this->say($admin, "✅ کانال اجباری: {$args[0]}\n" . (!empty($res['ok'])
-                    ? '✔ بررسی عضویت کار می‌کند (وضعیت شما: ' . ($res['result']['status'] ?? '?') . ').'
-                    : '❌ بررسی عضویت خطا داد: ' . ($res['description'] ?? '?') . "\nربات را ادمین کانال کنید."));
+                $this->say($admin, "کانال اجباری: {$args[0]}\n\n" . $app->requirements()->diagnose()['message']);
+                return true;
+
+            case '/channeltest':
+                $this->say($admin, $app->requirements()->diagnose()['message']);
                 return true;
 
             case '/feature':
@@ -183,6 +185,32 @@ final class AdminHandler extends Handler
         return false;
     }
 
+    /** An admin forwarded a channel post: show the channel's numeric id + a one-tap button. */
+    public function forwardedChannel(array $admin, array $chat): void
+    {
+        $this->app->requirements()->rememberChannel($chat);
+        $title = $chat['title'] ?? '';
+        $this->say($admin, "📢 کانال «{$title}»\nآیدی عددی: {$chat['id']}" . (!empty($chat['username']) ? "\nآیدی: @{$chat['username']}" : "\n(این کانال آیدی عمومی ندارد)")
+            . "\n\nبرای اجباری کردن عضویت در همین کانال دکمه را بزنید. ربات باید مدیر این کانال باشد.",
+            Ui::inline([[['✅ همین کانال اجباری شود', 'ac:set:' . $chat['id']]]]));
+    }
+
+    /** The bot was added to (or removed from) a channel or group. */
+    public function botMembership(array $chat, string $status): void
+    {
+        $this->app->requirements()->rememberChannel($chat, $status);
+        $title = $chat['title'] ?? (string) $chat['id'];
+        if (in_array($status, ['left', 'kicked'], true)) {
+            $this->app->notifyAdmins("📢 ربات از «{$title}» حذف شد.");
+            return;
+        }
+        $admin = in_array($status, ['administrator', 'creator'], true);
+        foreach ((array) ($this->app->config['admin']['ids'] ?? []) as $id) {
+            $this->app->bale->send((int) $id, "📢 ربات به «{$title}» اضافه شد" . ($admin ? ' و مدیر است ✅' : ' ولی مدیر نیست ⚠️ (برای بررسی عضویت باید مدیر باشد)') . "\nآیدی عددی: {$chat['id']}",
+                $admin ? Ui::inline([[['✅ کانال اجباری شود', 'ac:set:' . $chat['id']]]]) : null);
+        }
+    }
+
     private function showReport(array $admin, int $id): void
     {
         $db = $this->app->db;
@@ -219,6 +247,12 @@ final class AdminHandler extends Handler
 
     public function onCallback(array $admin, string $data, array $cb): string|array|null
     {
+        if (preg_match('~^ac:set:(-?\d{1,20})$~', $data, $m)) {
+            $diag = $this->app->requirements()->useChannel($m[1]);
+            $this->say($admin, $diag['message'] . "\n\nکانال اجباری: " . $this->app->settings->str('required_channel')
+                . ($this->app->settings->str('channel_link') === '' ? "\n⚠️ لینک عضویت را هم بدهید: /set channel_link https://ble.ir/…" : ''));
+            return $diag['code'] === 'ok' ? '✅ تنظیم شد' : '⚠️ تنظیم شد، ولی مشکل دارد';
+        }
         if (!preg_match('~^ar:(\d{1,10}):(s24|sp|ok|no)$~', $data, $m)) {
             return null;
         }

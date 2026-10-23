@@ -18,7 +18,7 @@ final class Router
         'ib' => InboxHandler::class, 'ix' => InboxHandler::class, 'ic' => InboxHandler::class,
         'st' => SettingsHandler::class,
         'home' => StartHandler::class,
-        'ar' => AdminHandler::class,
+        'ar' => AdminHandler::class, 'ac' => AdminHandler::class,
     ];
 
     public function __construct(private App $app)
@@ -58,6 +58,11 @@ final class Router
             return;
         }
         if ($admin && str_starts_with($text, '/') && $app->handler(AdminHandler::class)->command($user, $text)) {
+            return;
+        }
+        $fromChat = $m['forward_from_chat'] ?? $m['forward_origin']['chat'] ?? null;
+        if ($admin && is_array($fromChat) && ($fromChat['type'] ?? '') === 'channel' && !$app->matching()->activeChat((int) $user['id'])) {
+            $app->handler(AdminHandler::class)->forwardedChannel($user, $fromChat);
             return;
         }
         if ($text === '/help') {
@@ -151,7 +156,12 @@ final class Router
     /** The user blocked the bot (or unblocked it). End their chat and search. */
     private function memberUpdate(array $u): void
     {
-        if (($u['chat']['type'] ?? '') !== 'private' || ($u['new_chat_member']['status'] ?? '') !== 'kicked') {
+        $type = $u['chat']['type'] ?? '';
+        if (in_array($type, ['channel', 'group', 'supergroup'], true)) {
+            $this->app->handler(AdminHandler::class)->botMembership($u['chat'], (string) ($u['new_chat_member']['status'] ?? ''));
+            return;
+        }
+        if ($type !== 'private' || ($u['new_chat_member']['status'] ?? '') !== 'kicked') {
             return;
         }
         $user = $this->app->db->row('SELECT * FROM {users} WHERE bale_user_id = ?', [(int) ($u['from']['id'] ?? 0)]);

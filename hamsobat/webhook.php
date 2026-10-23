@@ -72,3 +72,8 @@ try {
     }
     $app->alertAdminsOnce('webhook_error', "⚠️ خطا در ربات:\n" . mb_substr($e->getMessage(), 0, 500) . "\n\nجزئیات: /errors", 600);
 }
+try {
+    $app->maintenance()->afterResponse(); // a running "send to all" moves on a little
+} catch (Throwable $e) {
+    $app->log->error('broadcast: ' . $e->getMessage());
+}

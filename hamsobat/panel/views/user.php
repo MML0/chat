@@ -53,7 +53,7 @@ $ledgerReasons = ['chat' => '💬 چت', 'referral' => '🎁 دعوت', 'admin' 
       <header><h3>🪪 مشخصات</h3></header>
       <dl class="info">
         <dt>حساب بله</dt><dd><?= Html::account($u['account'], true) ?> <?= Html::action($csrf, 'fetch_account', ['user_id' => $id], '🔄 دریافت از بله', 'btn sm ghost') ?></dd>
-        <?php if (!empty($u['account']['previous_names'])): ?><dt>نام‌های قبلی</dt><dd class="muted"><?= Html::e(str_replace(' | ', '  ←  ', $u['account']['previous_names'])) ?></dd><?php endif; ?>
+        <?php if (!empty($u['account']['previous_names'])): ?><dt>نام‌های قبلی</dt><dd class="muted"><?= implode(' ← ', array_map(fn ($n) => '<bdi>' . Html::e($n) . '</bdi>', explode(' | ', $u['account']['previous_names']))) ?></dd><?php endif; ?>
         <dt>آیدی عددی بله</dt><dd><code><?= Html::e($u['bale_user_id']) ?></code> <button class="link" data-copy="<?= Html::e($u['bale_user_id']) ?>">کپی</button></dd>
         <dt>اسم نمایشی</dt><dd><?= Html::e($u['display_name'] ?? '—') ?></dd>
         <dt>لقب</dt><dd><?= Html::e($u['nickname'] ?? '—') ?></dd>

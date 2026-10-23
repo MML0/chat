@@ -8,7 +8,8 @@ $errors = $data->errors(80, $level);
 $audit = $data->audit(60);
 $actions = ['login' => '🔑 ورود', 'logout' => '🚪 خروج', 'login_failed' => '⛔ رمز اشتباه', 'credit' => '🎁 اعتبار', 'unlimited' => '💎 نامحدود', 'unlock' => '🔓 بدون دعوت',
     'reset_today' => '🔄 سهمیه', 'suspend' => '⛔ تعلیق', 'unsuspend' => '✅ آزاد', 'end_user_chat' => '🏁 پایان چت', 'end_chat' => '🏁 پایان چت', 'message' => '✉️ پیام',
-    'nickname' => '✏️ لقب', 'clear' => '🗑 پاک کردن', 'report' => '🚩 گزارش', 'settings' => '⚙️ تنظیمات', 'cleanup' => '🧹 پاک‌سازی', 'webhook' => '🔗 وب‌هوک', 'fetch_account' => '🪪 حساب بله'];
+    'nickname' => '✏️ لقب', 'clear' => '🗑 پاک کردن', 'report' => '🚩 گزارش', 'settings' => '⚙️ تنظیمات', 'cleanup' => '🧹 پاک‌سازی', 'webhook' => '🔗 وب‌هوک', 'fetch_account' => '🪪 حساب بله',
+    'broadcast' => '📢 ارسال همگانی', 'broadcast_test' => '🧪 پیش‌نمایش', 'broadcast_status' => '📢 وضعیت ارسال', 'send_one' => '✉️ پیام به یک نفر', 'channel_test' => '🧪 تست کانال', 'set_channel' => '📢 کانال اجباری'];
 ?>
 <section class="grid g-1-1">
   <div class="card">

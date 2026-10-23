@@ -198,7 +198,7 @@ test('Channel membership is checked on the server', function () {
     $w->app->db->run('UPDATE {users} SET channel_verified_at = NULL');
     $w->find(1);
     ok(contains($w->bale->lastText(1), 'عضو کانال'), 'API error fails closed');
-    ok(contains(implode("\n", $w->bale->texts(9000)), 'ادمین کانال'), 'admin alerted');
+    ok(contains(implode("\n", $w->bale->texts(9000)), 'پیدا نمی‌کند'), 'admin alerted with the fix');
 });
 
 test('Referral counts only after the friend joins the channel (if required)', function () {
@@ -574,11 +574,12 @@ test('Every admin command runs', function () {
     $w->msg(1, 'سلام');
     $w->cb(2, "rr:c:{$chat}:msg");
     $rid = (int) $w->app->db->value('SELECT id FROM {reports}');
+    $w->bale->members[FakeBale::BOT_ID] = 'administrator';
     $expect = [
         '/admin' => 'دستورات ادمین', '/settings' => 'daily_free_chats', '/reports' => "#{$rid}",
         "/report {$rid}" => 'سلام', '/user Alpha' => 'آیدی بله: 1', '/user #2' => 'Beta', '/credit Alpha 3' => '3 اعتبار',
         '/unlock 2' => 'بدون دعوت', '/errors' => 'خطا', '/cleanup' => 'انجام شد', '/feature inbox off' => 'feature_inbox = 0',
-        '/setchannel @hamsohbat https://ble.ir/hamsohbat' => 'بررسی عضویت کار می‌کند', '/setchannel off' => 'لازم نیست',
+        '/setchannel @hamsohbat https://ble.ir/hamsohbat' => 'درست تنظیم شده', '/channeltest' => 'درست تنظیم شده', '/setchannel off' => 'لازم نیست',
         '/user nobody' => 'پیدا نشد', '/report 999' => 'پیدا نشد',
     ];
     foreach ($expect as $cmd => $needle) {
@@ -792,7 +793,7 @@ test('Panel data: every query runs on real data', function () {
     ok(is_array($d->errors()) && is_array($d->audit()) && $d->live()['chatting'] === 1, 'logs and live');
     $info = new Hamsobat\ServerInfo($w->app);
     $db = $info->database();
-    ok(count($db['tables']) === 24 && $db['size'] > 0, 'server info: 24 tables');
+    ok(count($db['tables']) === 25 && $db['size'] > 0, 'server info: 25 tables');
     ok(isset($info->system()['cpus'], $info->php()['version']), 'system + php');
 });
 
@@ -939,6 +940,105 @@ test('Panel: search by @username or real name, refresh from Bale', function () {
     ok($r[0] && contains($r[1], '@mahsa_new') && contains($w->app->users()->accounts([$u['id']])[$u['id']]['previous_names'], 'mahsa_k'), 'refresh from Bale');
     $w->msg(9000, '/user Moon');
     ok(contains($w->bale->lastText(9000), '@mahsa_new'), 'admin /user command shows it');
+});
+
+echo "\nv1.3: channel diagnosis, broadcast\n";
+
+test('Channel: "no such group or user" for a non-member is not a setup error when the bot is admin', function () {
+    $w = new World(['require_channel' => 1, 'required_channel' => '@log_channel', 'channel_link' => 'https://ble.ir/log_channel', 'required_referrals' => 0]);
+    $w->bale->notMemberError = 'Bad Request: no such group or user';
+    $w->bale->members[FakeBale::BOT_ID] = 'administrator';
+    $w->bale->chats['@log_channel'] = ['title' => 'لاگ', 'username' => 'log_channel'];
+    $w->bale->chats['-1001234'] = ['title' => 'لاگ', 'username' => 'log_channel'];
+    $u = $w->register(5, 'Moon');
+    $w->msg(5, Ui::FIND);
+    ok(contains($w->bale->lastText(5), 'عضو کانال شو'), 'non-member sees the join step');
+    ok(!$w->bale->texts(9000), 'admin is not alerted: setup is fine');
+    ok($w->count("SELECT COUNT(*) FROM {error_logs}") === 0, 'nothing logged');
+    $w->bale->members[5] = 'member';
+    $w->cb(5, 'rq');
+    ok(contains($w->bale->lastText(5), 'همه‌چیز آماده‌ست'), 'member passes');
+});
+
+test('Channel: bot not admin, or channel not found → clear instructions to the admin', function () {
+    $w = new World(['require_channel' => 1, 'required_channel' => '@log_channel', 'required_referrals' => 0]);
+    $w->bale->notMemberError = 'Bad Request: no such group or user';
+    $w->bale->members[FakeBale::BOT_ID] = 'member';
+    $w->register(5, 'Moon');
+    $w->msg(5, Ui::FIND);
+    ok(contains(implode("\n", $w->bale->texts(9000)), 'ادمین نیست'), 'bot is a member but not admin');
+    $w2 = new World(['require_channel' => 1, 'required_channel' => '@log_channel', 'required_referrals' => 0]);
+    $w2->bale->notMemberError = 'Bad Request: no such group or user';
+    $w2->register(5, 'Moon');
+    $w2->msg(5, Ui::FIND);
+    $alert = implode("\n", $w2->bale->texts(9000));
+    ok(contains($alert, 'پیدا نمی‌کند') && contains($alert, 'فوروارد'), 'not found: steps incl. forwarding a post');
+});
+
+test('Channel: forward a post → one-tap setup with the numeric id; bot added to a channel is noticed', function () {
+    $w = new World(['required_referrals' => 0]);
+    $w->bale->chats['-1007788'] = ['title' => 'هم‌صحبت', 'username' => 'hamsohbat_ch'];
+    $w->bale->members[FakeBale::BOT_ID] = 'administrator';
+    $w->msg(9000, '/start');
+    $w->msg(9000, '', ['forward_from_chat' => ['id' => -1007788, 'type' => 'channel', 'title' => 'هم‌صحبت', 'username' => 'hamsohbat_ch']]);
+    $last = last($w->bale->to(9000));
+    ok(contains($last['p']['text'], '-1007788') && ($last['p']['reply_markup']['inline_keyboard'][0][0]['callback_data'] ?? '') === 'ac:set:-1007788', 'id shown with a button');
+    $w->cb(9000, 'ac:set:-1007788');
+    $s = $w->app->settings;
+    ok($s->str('required_channel') === '@hamsohbat_ch' && $s->str('channel_link') === 'https://ble.ir/hamsohbat_ch' && $s->bool('require_channel'), 'channel and link set');
+    ok($w->app->requirements()->channelTarget() === '-1007788', 'numeric id used for checks');
+    ok(contains($w->bale->lastText(9000), 'درست تنظیم شده'), 'diagnosis ok');
+    $w->cb(5, 'ac:set:-1007788');
+    ok($w->user(5) === null || $s->str('required_channel') === '@hamsohbat_ch', 'non-admins cannot press it');
+    $w->handle(['update_id' => 77, 'my_chat_member' => ['chat' => ['id' => -1009999, 'type' => 'channel', 'title' => 'کانال دوم'], 'from' => ['id' => 9000], 'new_chat_member' => ['status' => 'administrator', 'user' => ['id' => 1]]]]);
+    ok(contains($w->bale->lastText(9000), 'کانال دوم') && (string) ($w->app->requirements()->knownChannels()[0]['id'] ?? '') === '-1009999', 'admin told, channel remembered');
+});
+
+test('Broadcast: everyone once, suspended skipped, failures counted, pause/resume/cancel', function () {
+    $w = new World();
+    foreach (range(1, 7) as $i) {
+        $w->ready($i, 'User' . $i);
+    }
+    $w->app->moderation()->suspend((int) $w->user(3)['id'], 0);
+    $w->bale->unreachable = [5];
+    $b = $w->app->broadcaster();
+    $id = $b->create("سلام همه 👋\nخبر خوب!", 'all', '🎁 ببین', 'https://ble.ir/x');
+    ok(is_int($id) && $w->count('SELECT total FROM {broadcasts}') === 6, 'total excludes the suspended user');
+    $before = count($w->bale->calls);
+    $b->step(5.0, 2);
+    $sends = array_values(array_filter(array_slice($w->bale->calls, $before), fn ($c) => $c['method'] === 'sendMessage' && ($c['p']['text'] ?? '') === "سلام همه 👋\nخبر خوب!"));
+    $to = array_map(fn ($c) => (int) $c['p']['chat_id'], $sends);
+    sort($to);
+    ok($to === [1, 2, 4, 5, 6, 7], 'each active user exactly once (batches of 2)');
+    ok(($sends[0]['p']['reply_markup']['inline_keyboard'][0][0]['url'] ?? '') === 'https://ble.ir/x', 'with the link button');
+    $r = $w->app->db->row('SELECT * FROM {broadcasts}');
+    ok($r['status'] === 'done' && (int) $r['sent'] === 5 && (int) $r['failed'] === 1, '5 sent, 1 blocked the bot, done');
+    $b->step(1.0);
+    ok(count(array_filter($w->bale->calls, fn ($c) => ($c['p']['text'] ?? '') === "سلام همه 👋\nخبر خوب!")) === 6, 'nothing sent twice');
+    $id2 = $b->create('دوم', 'girls');
+    ok(is_string($b->create('', 'all')) && is_string($b->create('x', 'all', 'btn', 'http://no')), 'validation');
+    $b->setStatus($id2, 'paused');
+    ok($b->step(1.0)['sent'] === 0, 'paused: nothing sent');
+    ok($b->setStatus($id2, 'running') && $b->setStatus($id2, 'cancelled') && !$b->setStatus($id2, 'running'), 'resume, cancel, cannot restart a cancelled one');
+});
+
+test('Broadcast moves on during webhooks; panel actions: test, send to one', function () {
+    $w = new World();
+    foreach (range(1, 3) as $i) {
+        $w->ready($i, 'User' . $i);
+    }
+    $w->from[2] = ['username' => 'two_bale'];
+    $w->time += 61;
+    $w->msg(2, Ui::MY_PROFILE);
+    $act = new Hamsobat\PanelActions($w->app, new Hamsobat\PanelAuth($w->app));
+    ok($act->run('broadcast_test', ['text' => 'تست تبلیغ'])[0] && $w->bale->lastText(9000) === 'تست تبلیغ' && !in_array('تست تبلیغ', $w->bale->texts(1), true), 'test goes to admins only');
+    ok($act->run('broadcast', ['text' => 'تبلیغ', 'audience' => 'all'])[0], 'broadcast created');
+    $w->app->maintenance()->afterResponse();
+    ok($w->bale->lastText(3) === 'تبلیغ' && $w->app->db->value('SELECT status FROM {broadcasts}') === 'done', 'sent during the webhook\'s after-work');
+    foreach (['#' . $w->user(1)['id'] => 1, '@two_bale' => 2, 'User3' => 3, '1' => 1] as $to => $bale) {
+        ok($act->run('send_one', ['to' => $to, 'text' => "سلام {$to}"])[0] && $w->bale->lastText($bale) === "سلام {$to}", "send to one: {$to}");
+    }
+    ok(!$act->run('send_one', ['to' => 'nobody', 'text' => 'x'])[0], 'unknown receiver');
 });
 
 echo "\n" . $GLOBALS['pass'] . ' passed, ' . count($GLOBALS['fail']) . " failed\n";

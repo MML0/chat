@@ -48,17 +48,26 @@ hamsobat/
    - **bale.bot_token**, and **bale.bot_username** without `@`
    - **bale.webhook_secret**, **admin.password**, **cron_secret:** long random strings, all different
    - **admin.ids:** your Bale user id. Not known yet? Leave it, finish the steps, send `/start` to the bot, then open `check.php`. It lists the newest users with their Bale ids.
-4. **Tables:** open `https://YOUR.SITE/hamsobat/migrate.php?pass=ADMIN_PASSWORD`. You should see ✔ for 24 tables.
+4. **Tables:** open `https://YOUR.SITE/hamsobat/migrate.php?pass=ADMIN_PASSWORD`. You should see ✔ for 25 tables.
 5. **Self-test:** open `https://YOUR.SITE/hamsobat/check.php?pass=ADMIN_PASSWORD`. Every line should be ✔.
 6. **Webhook:** open `https://YOUR.SITE/hamsobat/check.php?pass=ADMIN_PASSWORD&setwebhook=1`. The bot now runs from this folder.
 7. **Required channel:**
-   - Make the bot an **admin** of the channel; without that, membership can't be checked.
-   - In Bale, send the bot: `/setchannel @your_channel https://ble.ir/your_channel`. It tests the check right away.
+   - Make the bot an **admin** of the channel; Bale only lets admins check who is a member.
+   - **Easiest setup:** forward any post from the channel to the bot and tap **✅ همین کانال اجباری شود**. That stores the channel's numeric id and link.
+   - **Or** send `/setchannel @your_channel https://ble.ir/your_channel` to the bot. It runs a diagnosis right away; `/channeltest` repeats it.
    - To turn the requirement off: `/setchannel off`.
 8. **Admin panel:** open `https://YOUR.SITE/hamsobat/panel/`. Enter the admin password; the bot then sends a 6-digit code to your Bale account (`admin.ids`). Enter it and you're in.
 9. **Optional cron:** call `https://YOUR.SITE/hamsobat/cron/cleanup.php?k=CRON_SECRET` every minute, from the panel's cron or a free external cron service. Without it, the same work runs inside the webhook while people use the bot. The only difference: a lone searcher gets "nobody found" a bit late.
 
 HTTPS is required by Bale for webhooks.
+
+### Upgrading a live bot to 1.3 (no downtime)
+Same steps as 1.2 below. `migrate.php` adds two new tables (`user_accounts`, `broadcasts`) and changes nothing that exists; until it has run, the bot simply skips the features that need them.
+
+**What's new in 1.3:**
+- **"Send to all" and "send to one" in the panel (📢):** text plus an optional link button, an audience (everyone / complete profiles / active in 7 or 30 days / girls / boys / admins only), a test send to yourself first, and pause, resume or cancel. A broadcast is a queue sent in small batches, with nobody getting it twice. It moves fastest while the page is open, and also continues with the bot's normal work and cron.
+- **Channel check fixed:** Bale answers "no such group or user" both when the setup is wrong and when a user simply hasn't joined. The bot now checks itself (is it an admin of the channel? `getChat` gives the channel's numeric id) and treats the answer as "not joined" when the setup is fine. Otherwise it tells you exactly what to fix.
+- **Setting up the channel:** forward any post from the channel to the bot and tap "✅ همین کانال اجباری شود", or use the settings page (🧪 test, channels the bot has seen). The bot also tells you when it's added to a channel.
 
 ### Upgrading a live bot to 1.2 (no downtime)
 1. Upload the new zip over the old folder. Your `config.php` stays.
@@ -113,6 +122,7 @@ Examples: `/set daily_free_chats 7`, `/feature inbox off`, `/maintenance on`.
 | 👤 **User** | **Bale account:** real name and @username (links to the Bale profile), plus old names if they changed them. **Profile:** photo, display name, nickname, birth date (Shamsi + age), gender, wanted gender, city, bio, interests, privacy, joined, last seen, inviter, links. **History:** activity chart, all chats, invited friends, credit history, reports. **Actions:** gift credits (+10 … +1000 or any number), unlimited chats (1 / 7 / 30 days / forever), unlock without referral, refill today's free chats, message the user from the bot, end their chat, suspend (1 h / 24 h / 7 days / forever), rename, delete photo, bio or city. |
 | 💬 **Chats** | All chats, or only active or reported ones. Opening one shows **the full conversation as chat bubbles**: photos, voice players and videos inline, filtered messages marked in red, and live updates while the chat is still active. |
 | 📩 **Anonymous inbox** | Every anonymous message, with its real sender visible only to you, and each conversation as a thread. |
+| 📢 **Send message** | **Send to all** (ads, news): text and an optional link button. Audience: everyone, complete profiles, active in 7 or 30 days, girls, boys, or admins only. A live preview, a test send to yourself, and progress bars with pause, resume and cancel. **Send to one:** #id, nickname, @username or Bale id. |
 | 🚩 **Reports** | Each report with its reason, the last messages, how many people reported that user, and suspend / resolve / dismiss buttons. |
 | ⚙️ **Settings** | Every setting in groups, with switches, numbers and media-type chips. Changed values are marked; a "save all" bar appears when you edit. |
 | 🖥 **Server** | **Host:** gauges for CPU load, server RAM (and your account's RAM limit if the host shows it), disk, OPcache. **Bot performance:** requests per minute and hour, average and maximum response time, slow requests, errors, Bale API latency and a live ping, DB queries per request. **Health:** webhook status, pending updates, last webhook error. **Info:** PHP, extensions, MySQL version, connections, size and rows of every table. **Buttons:** "connect the bot to this folder" (setWebhook) and "run cleanup". |
@@ -233,13 +243,13 @@ If any step fails, send `/errors` to the bot. It shows Bale's exact answer.
 They need a MySQL/MariaDB database whose name contains `test` (and `e2e` for the end-to-end run). The defaults are `127.0.0.1:3307`, user `hs`/`hs`; override them with `HS_TEST_DB_*` environment variables.
 
 ```sh
-php tests/run.php              # 296 checks: validation, registration, date picker, referrals + abuse,
+php tests/run.php              # 325 checks (incl. channel diagnosis and broadcast): validation, registration, date picker, referrals + abuse,
                                # channel gate, quota boundaries, unlimited, matching rules, asking who to
                                # talk to on every search, block, relay, reports, inbox, admin, metrics,
                                # every panel query and action, Bale account capture (never leaked),
                                # running before migrate.php (live update) and the getChat backfill
 php tests/concurrency.php 40   # 50 parallel processes searching at once: invariants hold
-php tests/e2e/run_e2e.php      # 78 checks over HTTP + fake Bale: webhook.php, migrate.php, check.php, cron,
+php tests/e2e/run_e2e.php      # 84 checks over HTTP + fake Bale: webhook.php, migrate.php, check.php, cron,
                                # panel login with the Bale code, every page, CSRF, actions, live API, media
 # Preview the panel with demo data (test database only):
 HAMSOBAT_CONFIG=tests/e2e/state/config.php php tests/demo_seed.php

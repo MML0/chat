@@ -47,6 +47,14 @@ switch ($_GET['a'] ?? 'live') {
         ], $data->feed(max(0, (int) ($_GET['after'] ?? 0))));
         break;
 
+    case 'broadcast':
+        $b = $app->broadcaster();
+        $out['step'] = $b->running() ? $b->step(2.5, 15) : null;
+        $out['items'] = array_map(fn ($r) => [
+            'id' => (int) $r['id'], 'status' => $r['status'], 'total' => (int) $r['total'], 'sent' => (int) $r['sent'], 'failed' => (int) $r['failed'],
+        ], $b->recent(15));
+        break;
+
     case 'chat':
         $chat = $app->db->row('SELECT id, status, user_one_id FROM {chats} WHERE id = ?', [(int) ($_GET['id'] ?? 0)]);
         $out['status'] = $chat['status'] ?? null;

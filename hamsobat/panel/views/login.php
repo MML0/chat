@@ -11,7 +11,7 @@ defined('HAMSOBAT') || exit;
 <meta name="robots" content="noindex, nofollow">
 <title>ورود · پنل هم‌صحبت</title>
 <link rel="stylesheet" href="assets/panel.css?v=12">
-<script src="assets/panel.js?v=11" defer></script>
+<script src="assets/panel.js?v=13" defer></script>
 </head>
 <body class="login-page">
   <div class="login-glow" aria-hidden="true"></div>

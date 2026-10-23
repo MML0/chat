@@ -66,6 +66,31 @@ $allowed = array_map('trim', explode(',', $s->str('allowed_types')));
   </div>
 </form>
 
+<?php
+$req = $app->requirements();
+$diag = json_decode((string) ($s->raw('_channel_diag') ?? ''), true) ?: null;
+$known = $req->knownChannels();
+?>
+<section class="card channel-card">
+  <header><h3>📢 کانال اجباری: عیب‌یابی</h3><?= Html::action($csrf, 'channel_test', [], '🧪 تست الان', 'btn sm') ?></header>
+  <dl class="info">
+    <dt>تنظیم فعلی</dt><dd><code dir="ltr"><?= Html::e($s->str('required_channel') ?: '—') ?></code> <?= $s->bool('require_channel') ? '' : Html::badge('خاموش') ?></dd>
+    <dt>آیدی که از بله پرسیده می‌شود</dt><dd><code dir="ltr"><?= Html::e($req->channelTarget() ?: '—') ?></code></dd>
+    <dt>آخرین تست</dt><dd><?= $diag ? nl2br(Html::e($diag['message'])) . ' <small class="muted">(' . Html::ago(gmdate('Y-m-d H:i:s', (int) $diag['at'])) . ')</small>' : 'هنوز تست نشده' ?></dd>
+  </dl>
+  <?php if ($known): ?>
+    <p class="muted small">کانال‌هایی که ربات دیده (اضافه شدن ربات یا پست فورواردشده):</p>
+    <ul class="simple">
+      <?php foreach ($known as $c): ?>
+        <li><b><?= Html::e($c['title'] ?? $c['id']) ?></b> <code dir="ltr"><?= Html::e($c['id']) ?></code> <?= $c['username'] ? '<code dir="ltr">@' . Html::e($c['username']) . '</code>' : '' ?>
+          <?= $c['bot_status'] ? Html::badge(in_array($c['bot_status'], ['administrator', 'creator'], true) ? '✅ ربات مدیر است' : '⚠️ ربات مدیر نیست', in_array($c['bot_status'], ['administrator', 'creator'], true) ? 'ok' : 'amber') : '' ?>
+          <?= Html::action($csrf, 'set_channel', ['channel_id' => $c['id']], 'همین کانال اجباری شود', 'btn sm') ?></li>
+      <?php endforeach; ?>
+    </ul>
+  <?php endif; ?>
+  <p class="muted small">اگر خطای «no such group or user» می‌بینید: ۱) ربات را در کانال «مدیر» کنید؛ ۲) آیدی کانال باید آیدی عمومی خود کانال باشد (کانال خصوصی آیدی @ ندارد)؛ ۳) یک پست از کانال را برای ربات فوروارد کنید تا آیدی عددی‌اش را پیدا کند و با یک دکمه تنظیم کنید.</p>
+</section>
+
 <section class="card">
   <header><h3>🧩 از config.php (فقط خواندنی)</h3></header>
   <dl class="info">

@@ -36,6 +36,12 @@ final class PanelActions
             'report'        => $this->report((int) ($in['report_id'] ?? 0), (string) ($in['status'] ?? '')),
             'settings'      => $this->settings($in),
             'cleanup'       => $this->cleanup(),
+            'broadcast'     => $this->broadcast($in),
+            'broadcast_test' => $this->broadcastTest($in),
+            'broadcast_status' => $this->broadcastStatus((int) ($in['id'] ?? 0), (string) ($in['status'] ?? '')),
+            'send_one'      => $this->sendOne($in),
+            'channel_test'  => $this->channelTest(),
+            'set_channel'   => $this->setChannel((string) ($in['channel_id'] ?? '')),
             'webhook'       => $this->webhook(),
             default         => [false, 'کار ناشناخته.'],
         };
@@ -208,6 +214,90 @@ final class PanelActions
             return [false, implode(' | ', $errors) . ($changed ? ' — بقیه ذخیره شد: ' . implode('، ', $changed) : '')];
         }
         return [true, $changed ? 'ذخیره شد: ' . implode('، ', $changed) : 'چیزی تغییر نکرده بود.'];
+    }
+
+    private function broadcast(array $in): array
+    {
+        $b = $this->app->broadcaster();
+        if (!$b->available()) {
+            return [false, 'اول migrate.php را اجرا کنید.'];
+        }
+        $id = $b->create((string) ($in['text'] ?? ''), (string) ($in['audience'] ?? 'all'), (string) ($in['button_text'] ?? ''), (string) ($in['button_url'] ?? ''));
+        if (is_string($id)) {
+            return [false, $id];
+        }
+        $total = (int) $this->app->db->value('SELECT total FROM {broadcasts} WHERE id = ?', [$id]);
+        return [true, '📢 ارسال برای ' . Html::n($total) . ' نفر شروع شد. تا وقتی این صفحه باز است سریع‌تر پیش می‌رود.'];
+    }
+
+    /** Sends the draft only to the admins, to see how it looks. */
+    private function broadcastTest(array $in): array
+    {
+        $text = trim((string) ($in['text'] ?? ''));
+        if ($text === '') {
+            return [false, 'متن پیام خالی است.'];
+        }
+        $sent = 0;
+        foreach ((array) ($this->app->config['admin']['ids'] ?? []) as $id) {
+            $sent += !empty($this->app->broadcaster()->sendOne((int) $id, $text, trim((string) ($in['button_text'] ?? '')) ?: null, trim((string) ($in['button_url'] ?? '')) ?: null)['ok']) ? 1 : 0;
+        }
+        return $sent ? [true, '🧪 پیش‌نمایش برای ' . Html::n($sent) . ' ادمین در بله فرستاده شد.'] : [false, 'ارسال آزمایشی نشد. آیدی ادمین در config.php درست است؟'];
+    }
+
+    private function broadcastStatus(int $id, string $status): array
+    {
+        $ok = $this->app->broadcaster()->setStatus($id, $status);
+        return $ok ? [true, ['paused' => '⏸ متوقف شد.', 'running' => '▶️ ادامه پیدا کرد.', 'cancelled' => '⛔ لغو شد.'][$status]] : [false, 'این تغییر ممکن نیست.'];
+    }
+
+    /** "Send to one": #id, Bale numeric id, @username (Bale) or nickname. */
+    private function sendOne(array $in): array
+    {
+        $user = $this->resolve((string) ($in['to'] ?? ''));
+        if (!$user) {
+            return [false, 'کاربر پیدا نشد. #شماره، آیدی عددی بله، @یوزرنیم یا لقب را بنویسید.'];
+        }
+        $text = trim((string) ($in['text'] ?? ''));
+        if ($text === '' || mb_strlen($text) > 3900) {
+            return [false, 'متن پیام خالی یا خیلی طولانی است.'];
+        }
+        $button = [trim((string) ($in['button_text'] ?? '')), trim((string) ($in['button_url'] ?? ''))];
+        $res = $this->app->broadcaster()->sendOne((int) $user['bale_user_id'], $text, $button[0] ?: null, preg_match('~^https://\S+$~', $button[1]) ? $button[1] : null);
+        return !empty($res['ok']) ? [true, '✅ برای ' . ($user['nickname'] ?? '#' . $user['id']) . ' فرستاده شد.'] : [false, 'ارسال نشد: ' . ($res['description'] ?? '?')];
+    }
+
+    private function resolve(string $who): ?array
+    {
+        $who = trim(Text::digits($who));
+        $users = $this->app->users();
+        if (preg_match('~^#(\d+)$~', $who, $m)) {
+            return $users->get((int) $m[1]);
+        }
+        if (ctype_digit($who)) {
+            return $this->app->db->row('SELECT * FROM {users} WHERE bale_user_id = ?', [(int) $who]) ?? $users->get((int) $who);
+        }
+        if (str_starts_with($who, '@') && $this->app->db->hasTable('user_accounts')) {
+            $id = $this->app->db->value('SELECT user_id FROM {user_accounts} WHERE username = ?', [substr($who, 1)]);
+            if ($id) {
+                return $users->get((int) $id);
+            }
+        }
+        return $who !== '' ? $users->byNickname(ltrim($who, '@')) : null;
+    }
+
+    private function channelTest(): array
+    {
+        $d = $this->app->requirements()->diagnose();
+        return [$d['code'] === 'ok', str_replace("\n", ' ', $d['message'])];
+    }
+
+    private function setChannel(string $id): array
+    {
+        if (!preg_match('~^-?\d{3,20}$~', $id)) {
+            return [false, 'آیدی کانال نامعتبر است.'];
+        }
+        $d = $this->app->requirements()->useChannel($id);
+        return [$d['code'] === 'ok', str_replace("\n", ' ', $d['message'])];
     }
 
     private function cleanup(): array

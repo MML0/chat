@@ -25,10 +25,26 @@ final class Maintenance
         }
     }
 
+    /**
+     * After the webhook has done its work: send the next batch of a running broadcast
+     * (at most every 5 s, at most 2 s). Bale's connection is released first when PHP-FPM allows.
+     */
+    public function afterResponse(): void
+    {
+        if (!$this->app->broadcaster()->running() || !$this->app->settings->claim('_bc_tick', 5, $this->app->now())) {
+            return;
+        }
+        if (function_exists('fastcgi_finish_request')) {
+            fastcgi_finish_request();
+        }
+        $this->app->broadcaster()->step(2.0, 15);
+    }
+
     /** Everything, now (cron). @return array counts for the cron output */
     public function run(): array
     {
         return [
+            'broadcast'        => $this->app->broadcaster()->running() ? $this->app->broadcaster()->step(20.0, 25)['sent'] : 0,
             'expired_searches' => $this->expireSearches(),
             'idle_chats'       => $this->endIdleChats(),
             'purged'           => $this->purge(),

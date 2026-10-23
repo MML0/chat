@@ -21,7 +21,7 @@ $pick = fn (array $a) => $a[mt_rand(0, count($a) - 1)];
 
 $db->pdo->exec('SET FOREIGN_KEY_CHECKS = 0');
 foreach (['users', 'user_interests', 'referrals', 'chat_queue', 'chats', 'active_chats', 'daily_usage', 'user_credits', 'credit_ledger', 'messages',
-          'anonymous_sessions', 'anonymous_inbox', 'profile_views', 'blocked_users', 'reports', 'rate_limits', 'request_metrics', 'user_perks', 'admin_log', 'error_logs'] as $t) {
+          'anonymous_sessions', 'anonymous_inbox', 'profile_views', 'blocked_users', 'reports', 'rate_limits', 'request_metrics', 'user_perks', 'admin_log', 'error_logs', 'user_accounts', 'broadcasts'] as $t) {
     $db->pdo->exec('TRUNCATE ' . $db->t($t));
 }
 $db->pdo->exec('SET FOREIGN_KEY_CHECKS = 1');

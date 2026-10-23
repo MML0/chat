@@ -127,6 +127,11 @@ final class App
         return $this->services[RateLimiter::class] ??= new RateLimiter($this);
     }
 
+    public function broadcaster(): Broadcaster
+    {
+        return $this->services[Broadcaster::class] ??= new Broadcaster($this);
+    }
+
     public function maintenance(): Maintenance
     {
         return $this->services[Maintenance::class] ??= new Maintenance($this);

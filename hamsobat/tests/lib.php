@@ -61,12 +61,14 @@ function test_schema(Database $db): void
 /** Fake Bale: records every call and answers like Bale/Telegram would. */
 final class FakeBale
 {
+    public const BOT_ID = 7000001; // the bot's own user id (getMe)
     public array $calls = [];
     public array $members = [];      // bale user id => getChatMember status
     public array $unreachable = [];  // bale user ids that blocked the bot (403)
     public bool $channelBroken = false;
     public array $failMethods = [];  // method => description (ok:false)
-    public array $chats = [];        // bale user id => getChat result (first_name, last_name, username)
+    public array $chats = [];        // chat id or @name => getChat result (first_name/username or title/username)
+    public ?string $notMemberError = null; // Bale-style error for non-members instead of status "left"
     private int $messageId = 1000;
 
     public function transport(): callable
@@ -90,15 +92,18 @@ final class FakeBale
                     return [400, json_encode(['ok' => false, 'error_code' => 400, 'description' => 'Bad Request: chat not found'])];
                 }
                 $status = $this->members[(int) $p['user_id']] ?? 'left';
+                if ($status === 'left' && $this->notMemberError !== null) {
+                    return [400, json_encode(['ok' => false, 'error_code' => 400, 'description' => $this->notMemberError])];
+                }
                 return [200, json_encode(['ok' => true, 'result' => ['status' => $status, 'user' => ['id' => (int) $p['user_id']]]])];
             }
             if ($method === 'getChat') {
-                $info = $this->chats[(int) $p['chat_id']] ?? null;
+                $info = $this->chats[(string) $p['chat_id']] ?? null;
                 return $info ? [200, json_encode(['ok' => true, 'result' => ['id' => (int) $p['chat_id'], 'type' => 'private'] + $info])]
                     : [400, json_encode(['ok' => false, 'error_code' => 400, 'description' => 'Bad Request: chat not found'])];
             }
             if ($method === 'getMe') {
-                return [200, json_encode(['ok' => true, 'result' => ['id' => 1, 'username' => 'hamsohbatbot']])];
+                return [200, json_encode(['ok' => true, 'result' => ['id' => self::BOT_ID, 'username' => 'hamsohbatbot']])];
             }
             return [200, json_encode(['ok' => true, 'result' => ['message_id' => ++$this->messageId]])];
         };

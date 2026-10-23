@@ -375,3 +375,23 @@ CREATE TABLE IF NOT EXISTS hs_user_accounts (
   KEY hs_ix_accounts_username (username),
   CONSTRAINT hs_fk_accounts_user FOREIGN KEY (user_id) REFERENCES hs_users (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Messages from the admin to many users ("send to all"). Sent in small batches (panel open,
+-- the bot's periodic work or cron); last_user_id is the cursor, so nobody gets it twice.
+CREATE TABLE IF NOT EXISTS hs_broadcasts (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  text TEXT NOT NULL,
+  button_text VARCHAR(64) NULL,
+  button_url VARCHAR(500) NULL,
+  audience VARCHAR(16) NOT NULL,
+  status ENUM('running','paused','done','cancelled') NOT NULL DEFAULT 'running',
+  total INT UNSIGNED NOT NULL DEFAULT 0,
+  sent INT UNSIGNED NOT NULL DEFAULT 0,
+  failed INT UNSIGNED NOT NULL DEFAULT 0,
+  last_user_id INT UNSIGNED NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  finished_at DATETIME NULL,
+  PRIMARY KEY (id),
+  KEY hs_ix_broadcasts_status (status, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
