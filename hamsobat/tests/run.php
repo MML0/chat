@@ -695,6 +695,29 @@ test('Birth date picker: year → month → day, no empty buttons, typing still 
     ok($w->user(1)['birth_date'] === '2000-03-20', 'typing still works when editing');
 });
 
+test('Birth date picker follows the min_age setting exactly (also below 13)', function () {
+    $w = new World();
+    $w->app->settings->set('min_age', '10', $w->time); // saved from the panel
+    $w->msg(1, '/start');
+    $w->msg(1, Ui::COMPLETE_PROFILE);
+    $w->msg(1, 'سارا');
+    $w->msg(1, 'Sara');
+    $rows = last($w->bale->to(1))['p']['reply_markup']['inline_keyboard'] ?? [];
+    ok(($rows[0][0]['callback_data'] ?? '') === 'bd:y:1394', 'newest year is 1404 − 10');
+    $w->cb(1, 'bd:y:1395');
+    ok(last($w->bale->calls)['method'] === 'answerCallbackQuery', 'a year past the setting is ignored');
+    $w->cb(1, 'bd:y:1394');
+    $w->cb(1, 'bd:m:1394:1');
+    $w->cb(1, 'bd:d:1394:1:1');
+    ok($w->user(1)['birth_date'] === '2015-03-21', 'a 10-year-old can pick their date');
+    $w->cb(1, 'rg:g:f');
+    $w->cb(1, 'rg:p:any');
+    $w->app->settings->set('min_age', '12', $w->time);
+    $w->cb(1, 'pe:birth');
+    $w->msg(1, '1394/01/01');
+    ok(contains($w->bale->lastText(1), 'حداقل ۱۲ سال') && $w->user(1)['birth_date'] === '2015-03-21', 'typed dates are checked against the new setting');
+});
+
 test('Unlimited chats gift and "refill today"', function () {
     $w = new World(['daily_free_chats' => 1, 'rematch_cooldown_minutes' => 0]);
     $a = $w->ready(1, 'Alpha');

@@ -102,7 +102,6 @@ final class ProfileHandler extends Handler
         $id = (int) $user['id'];
         $text = isset($m['text']) ? (string) $m['text'] : null;
         $users = $this->app->users();
-        $s = $this->app->settings;
 
         if (in_array($step, ['gender', 'pref'], true)) {
             $this->say($user, '👆 از دکمه‌های بالا انتخاب کن.');
@@ -122,7 +121,7 @@ final class ProfileHandler extends Handler
             [$value, $error] = match ($step) {
                 'name'      => Text::displayName($text),
                 'nick'      => Text::nickname($text),
-                'birth'     => Text::birthDate($text, $this->app->today(), max(13, $s->int('min_age')), $s->int('max_age')),
+                'birth'     => Text::birthDate($text, $this->app->today(), ...$this->ageLimits()),
                 'city'      => Text::city($text),
                 'bio'       => Text::bio($text),
                 'interests' => Text::interests($text),
@@ -257,12 +256,19 @@ final class ProfileHandler extends Handler
     private const MONTHS = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
     private const YEARS_PER_PAGE = 12;
 
+    /** [min, max] age from the settings, exactly as the admin set them. */
+    private function ageLimits(): array
+    {
+        $min = max(0, $this->app->settings->int('min_age'));
+        return [$min, max($min, $this->app->settings->int('max_age'))];
+    }
+
     /** [youngest, oldest] allowed Jalali birth years. */
     private function yearRange(): array
     {
         [$cy] = Text::gregorianToJalali(...array_map('intval', explode('-', $this->app->today())));
-        $s = $this->app->settings;
-        return [$cy - max(13, $s->int('min_age')), $cy - max(13, $s->int('max_age'))];
+        [$min, $max] = $this->ageLimits();
+        return [$cy - $min, $cy - $max];
     }
 
     /** Year buttons, newest first, 12 per page. $start = first (newest) year of the page. */
@@ -344,8 +350,7 @@ final class ProfileHandler extends Handler
                 return null;
 
             case 'd': // day chosen → save
-                $s = $this->app->settings;
-                [$date, $error] = Text::birthDate(($parts[2] ?? '') . '/' . ($parts[3] ?? '') . '/' . ($parts[4] ?? ''), $this->app->today(), max(13, $s->int('min_age')), $s->int('max_age'));
+                [$date, $error] = Text::birthDate(($parts[2] ?? '') . '/' . ($parts[3] ?? '') . '/' . ($parts[4] ?? ''), $this->app->today(), ...$this->ageLimits());
                 if ($error !== null) {
                     return ['text' => $error, 'alert' => true];
                 }
