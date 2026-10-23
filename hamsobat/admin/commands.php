@@ -118,8 +118,9 @@ final class AdminHandler extends Handler
                 }
                 $q = $app->quota()->status((int) $u['id']);
                 $against = (int) $app->db->value('SELECT COUNT(*) FROM {reports} WHERE reported_user_id = ?', [$u['id']]);
+                $account = Users::accountLabel($app->users()->accounts([(int) $u['id']])[(int) $u['id']] ?? []);
                 $this->say($admin, "👤 کاربر #{$u['id']}\nلقب: " . ($u['nickname'] ?? '—') . "\nاسم: " . ($u['display_name'] ?? '—')
-                    . "\nآیدی بله: {$u['bale_user_id']}\nجنسیت: " . Ui::genderName($u['gender']) . ' | سن: ' . ($u['birth_date'] ? Text::age($u['birth_date'], $app->today()) : '—')
+                    . "\nحساب بله: " . ($account !== '' ? $account : '—') . "\nآیدی بله: {$u['bale_user_id']}\nجنسیت: " . Ui::genderName($u['gender']) . ' | سن: ' . ($u['birth_date'] ? Text::age($u['birth_date'], $app->today()) : '—')
                     . "\nوضعیت: {$u['status']}" . ($u['suspended_until'] ? " تا {$u['suspended_until']} UTC" : '')
                     . "\nپروفایل کامل: " . ($u['profile_completed'] ? 'بله' : 'خیر') . ' | بدون دعوت: ' . ($u['referral_waived'] ? 'بله' : 'خیر')
                     . "\nدعوت موفق: " . $app->referrals()->qualifiedCount((int) $u['id']) . ' | دعوت‌کننده: ' . ($u['referred_by_user_id'] ? "#{$u['referred_by_user_id']}" : '—')

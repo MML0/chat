@@ -80,6 +80,7 @@ final class Maintenance
             'metrics'  => $this->quiet(fn () => $db->run('DELETE FROM {request_metrics} WHERE minute_at < ?', [$this->app->ts($now - 14 * 86400)])->rowCount()),
             'audit'    => $this->quiet(fn () => $db->run('DELETE FROM {admin_log} WHERE created_at < ?', [$this->app->ts($now - 180 * 86400)])->rowCount()),
             'media'    => $this->purgeMediaCache($now - 7 * 86400),
+            'accounts' => $this->quiet(fn () => $this->app->users()->backfillAccounts(30)),
         ];
     }
 

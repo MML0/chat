@@ -66,6 +66,7 @@ final class FakeBale
     public array $unreachable = [];  // bale user ids that blocked the bot (403)
     public bool $channelBroken = false;
     public array $failMethods = [];  // method => description (ok:false)
+    public array $chats = [];        // bale user id => getChat result (first_name, last_name, username)
     private int $messageId = 1000;
 
     public function transport(): callable
@@ -90,6 +91,11 @@ final class FakeBale
                 }
                 $status = $this->members[(int) $p['user_id']] ?? 'left';
                 return [200, json_encode(['ok' => true, 'result' => ['status' => $status, 'user' => ['id' => (int) $p['user_id']]]])];
+            }
+            if ($method === 'getChat') {
+                $info = $this->chats[(int) $p['chat_id']] ?? null;
+                return $info ? [200, json_encode(['ok' => true, 'result' => ['id' => (int) $p['chat_id'], 'type' => 'private'] + $info])]
+                    : [400, json_encode(['ok' => false, 'error_code' => 400, 'description' => 'Bad Request: chat not found'])];
             }
             if ($method === 'getMe') {
                 return [200, json_encode(['ok' => true, 'result' => ['id' => 1, 'username' => 'hamsohbatbot']])];
@@ -147,11 +153,14 @@ final class World
         (new Router($this->app))->handle($update);
     }
 
+    /** Bale "from" overrides per user id (first_name, last_name, username). */
+    public array $from = [];
+
     public function msg(int $from, string $text, array $extra = []): void
     {
         $this->handle(['update_id' => $this->updateId++, 'message' => [
             'message_id' => $this->messageId++, 'date' => $this->time,
-            'from' => ['id' => $from, 'is_bot' => false, 'first_name' => 'U' . $from],
+            'from' => ($this->from[$from] ?? []) + ['id' => $from, 'is_bot' => false, 'first_name' => 'U' . $from],
             'chat' => ['id' => $from, 'type' => 'private'],
             'text' => $text,
         ] + $extra]);
@@ -173,6 +182,14 @@ final class World
             'id' => 'cb' . $this->updateId, 'from' => ['id' => $from, 'is_bot' => false], 'data' => $data,
             'message' => ['message_id' => $messageId, 'chat' => ['id' => $from, 'type' => 'private']],
         ]]);
+    }
+
+    /** 🔎 then the "who do you want to talk to?" button (the user's saved choice, or any). */
+    public function find(int $baleId, ?string $gender = null): void
+    {
+        $this->msg($baleId, Ui::FIND);
+        $u = $this->user($baleId);
+        $this->cb($baleId, 'fg:' . ($gender ?? ($u['preferred_gender'] ?? null) ?: 'any'));
     }
 
     public function user(int $baleId): ?array

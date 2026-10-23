@@ -19,7 +19,8 @@ $person = function (?array $u, string $side) use ($today): string {
         return '<div class="person">—</div>';
     }
     return '<a class="person side-' . $side . '" href="?p=user&id=' . (int) $u['id'] . '">' . Html::avatar($u, 'lg') . '<span><b>' . Html::e($u['nickname'] ?? '#' . $u['id']) . '</b><small>'
-        . Html::gender($u['gender']) . ($u['birth_date'] ? ' · ' . Text::fa(Text::age($u['birth_date'], $today)) . ' ساله' : '') . ($u['city'] ? ' · ' . Html::e($u['city']) : '') . '</small></span></a>';
+        . Html::gender($u['gender']) . ($u['birth_date'] ? ' · ' . Text::fa(Text::age($u['birth_date'], $today)) . ' ساله' : '') . ($u['city'] ? ' · ' . Html::e($u['city']) : '') . '</small>'
+        . '<small>' . Html::account($u['account'] ?? null) . '</small></span></a>';
 };
 ?>
 <section class="card chat-head">

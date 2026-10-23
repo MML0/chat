@@ -47,7 +47,7 @@ $onlineSince = time() - 300;
         <td>
           <a class="user-cell" href="?p=user&id=<?= (int) $u['id'] ?>">
             <?= Html::avatar($u, '', $online) ?>
-            <span><b><?= Html::e($u['nickname'] ?? '— بدون پروفایل —') ?></b><small><?= Html::e($u['display_name'] ?? '') ?> · #<?= Html::n($u['id']) ?></small></span>
+            <span><b><?= Html::e($u['nickname'] ?? '— بدون پروفایل —') ?></b><small><?= Html::e($u['display_name'] ?? '') ?> · #<?= Html::n($u['id']) ?></small><small><?= Html::account($u['account']) ?></small></span>
           </a>
         </td>
         <td><?= $u['birth_date'] ? Html::n(Text::age($u['birth_date'], $today)) . ' ساله' : '—' ?> <span class="g-<?= Html::e($u['gender'] ?? '') ?>"><?= ['m' => '👨', 'f' => '👩'][$u['gender'] ?? ''] ?? '' ?></span></td>

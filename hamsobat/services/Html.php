@@ -171,6 +171,19 @@ final class Html
         return $h . '<button class="' . self::e($class) . '">' . self::e($label) . '</button></form>';
     }
 
+    /** The real Bale account (admin only): "@username · Name", @username links to ble.ir. */
+    public static function account(?array $a, bool $long = false): string
+    {
+        if (!$a || (empty($a['username']) && empty($a['first_name']) && empty($a['last_name']))) {
+            return $long ? '<span class="muted">هنوز دریافت نشده (با پیام بعدی کاربر پر می‌شود)</span>' : '';
+        }
+        $name = trim(($a['first_name'] ?? '') . ' ' . ($a['last_name'] ?? ''));
+        $user = !empty($a['username'])
+            ? '<a class="acc-user" dir="ltr" href="https://ble.ir/' . rawurlencode($a['username']) . '" target="_blank" rel="noopener noreferrer">@' . self::e($a['username']) . '</a>'
+            : '';
+        return '<span class="acc">🪪 ' . implode(' · ', array_filter([$user, $name !== '' ? '<span>' . self::e($name) . '</span>' : ''])) . '</span>';
+    }
+
     public static function reportStatus(string $s): string
     {
         return ['open' => self::badge('🚩 باز', 'bad'), 'resolved' => self::badge('✅ رسیدگی شد', 'ok'), 'dismissed' => self::badge('❌ رد شد')][$s] ?? self::badge($s);

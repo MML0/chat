@@ -1,5 +1,5 @@
 <?php
-// Concurrent matching test: N separate PHP processes press "🔎 پیدا کردن هم‌صحبت" at the
+// Concurrent matching test: N separate PHP processes start a search (fg:any button) at the
 // same moment (some users twice), each with its own DB connection, like parallel webhooks.
 // Then the invariants are checked: nobody is matched with themselves or twice, nobody is
 // both chatting and waiting, at most one compatible user is left waiting, and every match
@@ -11,7 +11,6 @@ use Hamsobat\App;
 use Hamsobat\BaleApi;
 use Hamsobat\Database;
 use Hamsobat\Router;
-use Hamsobat\Ui;
 
 if (($argv[1] ?? '') === 'worker') {
     [$baleId, $startAt] = [(int) $argv[2], (float) $argv[3]];
@@ -23,8 +22,9 @@ if (($argv[1] ?? '') === 'worker') {
         usleep(200);
     }
     try {
-        (new Router($app))->handle(['update_id' => random_int(1, PHP_INT_MAX), 'message' => [
-            'message_id' => 1, 'from' => ['id' => $baleId], 'chat' => ['id' => $baleId, 'type' => 'private'], 'text' => Ui::FIND,
+        // The "🎲 فرقی نمی‌کنه" answer to "who do you want to talk to?" is what starts the search.
+        (new Router($app))->handle(['update_id' => random_int(1, PHP_INT_MAX), 'callback_query' => [
+            'id' => 'c' . $baleId, 'from' => ['id' => $baleId], 'data' => 'fg:any', 'message' => ['message_id' => 1, 'chat' => ['id' => $baleId, 'type' => 'private']],
         ]]);
         echo "ok\n";
     } catch (Throwable $e) {

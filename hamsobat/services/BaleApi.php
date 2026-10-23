@@ -106,6 +106,12 @@ final class BaleApi
         return $this->call('getChatMember', ['chat_id' => $chatId, 'user_id' => $userId], 8);
     }
 
+    /** Chat info; for a private chat: first_name, last_name, username of the user. */
+    public function getChat(int|string $chatId): array
+    {
+        return $this->call('getChat', ['chat_id' => $chatId], 8);
+    }
+
     /** True when the user can no longer get messages (blocked the bot, deleted account …). */
     public static function isUnreachable(array $res): bool
     {

@@ -142,7 +142,7 @@ echo "\nReferrals and access\n";
 test('Referral: new user qualifies once, inviter rewarded once and unlocked', function () {
     $w = new World(['referral_reward_credits' => 3]);
     $a = $w->register(1, 'Inviter');
-    $w->msg(1, Ui::FIND);
+    $w->find(1);
     ok(contains($w->bale->lastText(1), 'یک دوست') && !$w->app->matching()->isSearching((int) $a['id']), 'locked before a referral');
     $w->register(2, 'Friend', 'f', 'any', '1376/02/02', 'ref' . $a['referral_code']);
     $b = $w->user(2);
@@ -157,7 +157,7 @@ test('Referral: new user qualifies once, inviter rewarded once and unlocked', fu
     $c = $w->register(3, 'Other');
     $w->msg(2, '/start ref' . $c['referral_code']);
     ok((int) $w->user(2)['referred_by_user_id'] === (int) $a['id'], 'inviter cannot be replaced');
-    $w->msg(1, Ui::FIND);
+    $w->find(1);
     ok($w->app->matching()->isSearching((int) $a['id']), 'unlocked: searching');
 });
 
@@ -187,7 +187,7 @@ test('Channel membership is checked on the server', function () {
     $w->register(1, 'Moon');
     $w->msg(1, Ui::FIND);
     $last = end($w->bale->calls);
-    ok(contains($w->bale->lastText(1), 'عضو کانال شو'), 'requirements shown');
+    ok(contains($w->bale->lastText(1), 'عضو کانال شو'), 'requirements shown (before asking anything)');
     ok(($last['p']['reply_markup']['inline_keyboard'][0][0]['url'] ?? '') === 'https://ble.ir/hamsohbat', 'join button is a link');
     $w->cb(1, 'rq');
     ok(contains($w->bale->lastText(1), 'عضو کانال شو'), 'pressing "check" without joining does not pass');
@@ -196,7 +196,7 @@ test('Channel membership is checked on the server', function () {
     ok(contains($w->bale->lastText(1), 'همه‌چیز آماده‌ست'), 'member passes');
     $w->bale->channelBroken = true;
     $w->app->db->run('UPDATE {users} SET channel_verified_at = NULL');
-    $w->msg(1, Ui::FIND);
+    $w->find(1);
     ok(contains($w->bale->lastText(1), 'عضو کانال'), 'API error fails closed');
     ok(contains(implode("\n", $w->bale->texts(9000)), 'ادمین کانال'), 'admin alerted');
 });
@@ -217,12 +217,12 @@ test('Two users are matched; credits only spent on a match', function () {
     $w = new World(['daily_free_chats' => 5]);
     $a = $w->ready(1, 'Alpha');
     $b = $w->ready(2, 'Beta', 'f');
-    $w->msg(1, Ui::FIND);
+    $w->find(1);
     ok(contains($w->bale->lastText(1), 'داریم برات هم‌صحبت پیدا می‌کنیم'), 'searching');
-    $kb = end($w->bale->calls)['p']['reply_markup']['keyboard'][0][0]['text'] ?? '';
+    $kb = last(array_values(array_filter($w->bale->to(1), fn ($c) => isset($c['p']['reply_markup']['keyboard']))))['p']['reply_markup']['keyboard'][0][0]['text'] ?? '';
     ok($kb === Ui::CANCEL_SEARCH, 'cancel-search keyboard');
     ok($w->app->quota()->status((int) $a['id'])['free_left'] === 5, 'searching costs nothing');
-    $w->msg(2, Ui::FIND);
+    $w->find(2);
     ok($w->activeChat(1)['partner_id'] === (int) $b['id'] && $w->activeChat(2)['partner_id'] === (int) $a['id'], 'matched');
     ok($w->app->quota()->status((int) $a['id'])['free_left'] === 4 && $w->app->quota()->status((int) $b['id'])['free_left'] === 4, 'one chat each');
     $texts = implode("\n", $w->bale->texts(1));
@@ -234,16 +234,16 @@ test('Two users are matched; credits only spent on a match', function () {
 test('Cancelled and timed-out searches cost nothing', function () {
     $w = new World(['search_timeout_seconds' => 30]);
     $a = $w->ready(1, 'Alpha');
-    $w->msg(1, Ui::FIND);
+    $w->find(1);
     $w->msg(1, Ui::CANCEL_SEARCH);
     ok(!$w->app->matching()->isSearching((int) $a['id']) && contains($w->bale->lastText(1), 'لغو شد'), 'cancelled');
-    $w->msg(1, Ui::FIND);
+    $w->find(1);
     $w->time += 31;
     ok(!$w->app->matching()->isSearching((int) $a['id']), 'expired after 30 s');
     $w->app->maintenance()->tick();
     ok(contains($w->bale->lastText(1), 'پیدا نشد'), 'told nobody was found');
     $b = $w->ready(2, 'Beta');
-    $w->msg(2, Ui::FIND);
+    $w->find(2);
     ok($w->activeChat(2) === null, 'expired user is not matched');
     ok($w->app->quota()->status((int) $a['id'])['free_left'] === 5, 'nothing spent');
 });
@@ -254,8 +254,8 @@ test('Quota boundary: free chats, then bonus credits, then refused', function ()
     $w->ready(2, 'Beta');
     $w->app->quota()->grant((int) $a['id'], 1, 'admin', 'test');
     for ($i = 1; $i <= 3; $i++) {
-        $w->msg(1, Ui::FIND);
-        $w->msg(2, Ui::FIND);
+        $w->find(1);
+        $w->find(2);
         ok($w->activeChat(1) !== null, "chat {$i} started");
         $w->msg(1, Ui::END);
         $w->app->db->run('UPDATE {daily_usage} SET successful_chats = 0, bonus_credits_used = 0 WHERE user_id <> ?', [$a['id']]);
@@ -263,7 +263,7 @@ test('Quota boundary: free chats, then bonus credits, then refused', function ()
     $s = $w->app->quota()->status((int) $a['id']);
     ok($s['free_left'] === 0 && $s['credits'] === 0 && $s['used'] === 3, '2 free + 1 credit used');
     ok($w->count("SELECT COUNT(*) FROM {credit_ledger} WHERE user_id = ? AND reason = 'chat'", [$a['id']]) === 1, 'credit spend in the ledger');
-    $w->msg(1, Ui::FIND);
+    $w->find(1);
     ok(contains($w->bale->lastText(1), 'سهمیه رایگان امروزت تموم شده') && !$w->app->matching()->isSearching((int) $a['id']), 'refused, not queued');
     $w->time += 86400; // next day in Tehran
     ok($w->app->quota()->status((int) $a['id'])['free_left'] === 2, 'new day, new free chats');
@@ -273,24 +273,24 @@ test('Preferences, blocks, minors and self are respected', function () {
     $w = new World(['min_age' => 13, 'rematch_cooldown_minutes' => 0]);
     $boyWantsGirl = $w->ready(1, 'BoyA', 'm', 'f');
     $w->ready(2, 'BoyB', 'm', 'any');
-    $w->msg(1, Ui::FIND);
-    $w->msg(2, Ui::FIND);
+    $w->find(1);
+    $w->find(2);
     ok($w->activeChat(1) === null, 'm wanting f is not matched with m');
     $w->ready(3, 'GirlWantsGirl', 'f', 'f');
-    $w->msg(3, Ui::FIND);
+    $w->find(3);
     ok($w->activeChat(3) === null, 'f wanting f is not matched with m wanting f');
     $w->ready(4, 'GirlAny', 'f', 'any');
-    $w->msg(4, Ui::FIND);
+    $w->find(4);
     ok(($w->activeChat(4)['partner_id'] ?? 0) === (int) $boyWantsGirl['id'], 'longest waiting compatible user first');
     // minors
     $teen = $w->ready(5, 'Teen', 'm', 'any', '1390/01/01');
-    $w->msg(5, Ui::FIND);
+    $w->find(5);
     ok($w->activeChat(5) === null && $w->activeChat(2) === null, 'a minor is never matched with an adult');
     $w->ready(6, 'Teen2', 'f', 'any', '1391/01/01');
-    $w->msg(6, Ui::FIND);
+    $w->find(6);
     ok(($w->activeChat(6)['partner_id'] ?? 0) === (int) $teen['id'], 'minors are matched with minors');
     // self: searching twice never matches yourself
-    $w->msg(2, Ui::FIND);
+    $w->find(2);
     ok($w->activeChat(2) === null && $w->count('SELECT COUNT(*) FROM {chat_queue} WHERE user_id = ?', [$w->user(2)['id']]) === 1, 'one queue row, no self-match');
 });
 
@@ -298,8 +298,8 @@ test('Block ends the chat, stays silent and prevents matching both ways', functi
     $w = new World(['rematch_cooldown_minutes' => 0]);
     $a = $w->ready(1, 'Alpha');
     $b = $w->ready(2, 'Beta');
-    $w->msg(1, Ui::FIND);
-    $w->msg(2, Ui::FIND);
+    $w->find(1);
+    $w->find(2);
     $chatId = $w->activeChat(1)['chat_id'];
     $w->msg(1, Ui::BLOCK);
     ok($w->activeChat(1) !== null, 'asks for confirmation first');
@@ -307,19 +307,19 @@ test('Block ends the chat, stays silent and prevents matching both ways', functi
     ok($w->activeChat(1) === null && $w->activeChat(2) === null, 'chat ended');
     $partnerTexts = implode("\n", $w->bale->texts(2));
     ok(contains($partnerTexts, 'هم‌صحبتت چت رو تموم کرد') && !contains($partnerTexts, 'مسدود شد'), 'blocked user is not told');
-    $w->msg(2, Ui::FIND);
-    $w->msg(1, Ui::FIND);
+    $w->find(2);
+    $w->find(1);
     ok($w->activeChat(1) === null, 'never matched again (blocker searches)');
     $w->msg(1, Ui::CANCEL_SEARCH);
     $w->msg(2, Ui::CANCEL_SEARCH);
-    $w->msg(1, Ui::FIND);
-    $w->msg(2, Ui::FIND);
+    $w->find(1);
+    $w->find(2);
     ok($w->activeChat(2) === null, 'never matched again (blocked one searches)');
     $w->msg(1, Ui::CANCEL_SEARCH);
     $w->msg(2, Ui::CANCEL_SEARCH);
     $w->cb(1, "st:ub:{$b['id']}");
-    $w->msg(1, Ui::FIND);
-    $w->msg(2, Ui::FIND);
+    $w->find(1);
+    $w->find(2);
     ok($w->activeChat(1) !== null, 'matched again after unblock');
 });
 
@@ -328,15 +328,17 @@ test('Rematch cooldown and "next"', function () {
     $a = $w->ready(1, 'Alpha');
     $b = $w->ready(2, 'Beta');
     $c = $w->ready(3, 'Gamma');
-    $w->msg(1, Ui::FIND);
-    $w->msg(2, Ui::FIND);
+    $w->find(1);
+    $w->find(2);
     $first = $w->activeChat(1)['chat_id'];
     $w->msg(1, Ui::NEXT);
+    ok(contains($w->bale->lastText(1), 'با کی می‌خوای'), '"next" asks who first');
+    $w->cb(1, 'fg:any');
     ok($w->activeChat(2) === null && contains(implode("\n", $w->bale->texts(2)), 'هم‌صحبتت چت رو تموم کرد'), 'partner told');
     ok($w->app->matching()->isSearching((int) $a['id']), '"next" searches again');
-    $w->msg(2, Ui::FIND);
+    $w->find(2);
     ok($w->activeChat(2) === null, 'not rematched with the same person right away');
-    $w->msg(3, Ui::FIND);
+    $w->find(3);
     ok(($w->activeChat(3)['partner_id'] ?? 0) === (int) $a['id'], 'matched with someone new');
     $w->cb(1, "ch:end:{$first}");
     ok($w->activeChat(1) !== null, 'an old "end" button does not end the new chat');
@@ -348,8 +350,8 @@ test('Text and media are relayed anonymously; unsafe content filtered', function
     $w = new World(['msg_rate_per_minute' => 8]);
     $w->ready(1, 'Alpha');
     $w->ready(2, 'Beta');
-    $w->msg(1, Ui::FIND);
-    $w->msg(2, Ui::FIND);
+    $w->find(1);
+    $w->find(2);
     $before = count($w->bale->calls);
     $w->msg(1, 'سلام! خوبی؟');
     $sent = array_slice($w->bale->calls, $before);
@@ -385,8 +387,8 @@ test('copyMessage is the fallback when re-sending fails', function () {
     $w = new World();
     $w->ready(1, 'Alpha');
     $w->ready(2, 'Beta');
-    $w->msg(1, Ui::FIND);
-    $w->msg(2, Ui::FIND);
+    $w->find(1);
+    $w->find(2);
     $w->bale->failMethods['sendVideo'] = 'Bad Request: wrong file identifier';
     $w->media(1, 'video', ['file_id' => 'VID', 'file_size' => 100]);
     $last = end($w->bale->calls);
@@ -397,16 +399,16 @@ test('Partner who blocked the bot: chat ends, credits refunded on a dead match',
     $w = new World();
     $a = $w->ready(1, 'Alpha');
     $w->ready(2, 'Beta');
-    $w->msg(1, Ui::FIND);
-    $w->msg(2, Ui::FIND);
+    $w->find(1);
+    $w->find(2);
     $w->bale->unreachable[] = 2;
     $w->msg(1, 'سلام');
     ok($w->activeChat(1) === null && contains($w->bale->lastText(1), 'از ربات خارج شده'), 'chat ended on 403');
     // A waiting user who left the bot is skipped and both get their chat back.
     $c = $w->ready(3, 'Gamma');
-    $w->msg(3, Ui::FIND);
+    $w->find(3);
     $w->bale->unreachable = [3];
-    $w->msg(1, Ui::FIND);
+    $w->find(1);
     ok($w->activeChat(1) === null && $w->app->matching()->isSearching((int) $a['id']), 'dead match undone, searching again');
     ok($w->app->quota()->status((int) $c['id'])['free_left'] === 5 && $w->app->quota()->status((int) $a['id'])['free_left'] === 4, 'refunded (Alpha only paid for the real first chat)');
 });
@@ -418,8 +420,8 @@ test('Viewing a profile respects privacy and notifies once per cooldown', functi
     $w->ready(1, 'Alpha');
     $b = $w->ready(2, 'Beta');
     $w->app->db->run("UPDATE {users} SET city = 'تهران', bio = 'سلام', show_city = 0 WHERE id = ?", [$b['id']]);
-    $w->msg(1, Ui::FIND);
-    $w->msg(2, Ui::FIND);
+    $w->find(1);
+    $w->find(2);
     $chatId = $w->activeChat(1)['chat_id'];
     $w->cb(1, "ch:pv:{$chatId}");
     $card = $w->bale->lastText(1);
@@ -437,8 +439,8 @@ test('Reports: reasons, duplicates, details, auto-suspension', function () {
     $bad = $w->ready(1, 'Bad');
     $w->ready(2, 'Rep1');
     $w->ready(3, 'Rep2');
-    $w->msg(1, Ui::FIND);
-    $w->msg(2, Ui::FIND);
+    $w->find(1);
+    $w->find(2);
     $chat1 = $w->activeChat(2)['chat_id'];
     $w->msg(2, Ui::REPORT);
     ok(contains($w->bale->lastText(2), 'چرا می‌خوای'), 'asks reason');
@@ -453,16 +455,16 @@ test('Reports: reasons, duplicates, details, auto-suspension', function () {
     $w->msg(2, Ui::END);
     $w->cb(3, "rr:c:{$chat1}:har");
     ok($w->count('SELECT COUNT(*) FROM {reports}') === 1, 'outsider cannot report a chat');
-    $w->msg(1, Ui::FIND);
-    $w->msg(3, Ui::FIND);
+    $w->find(1);
+    $w->find(3);
     $chat2 = $w->activeChat(3)['chat_id'];
     $w->cb(3, "rr:c:{$chat2}:har");
     ok($w->user(1)['status'] === 'suspended', 'suspended after 2 different reporters');
     ok($w->activeChat(3) === null, 'their chat ended');
-    $w->msg(1, Ui::FIND);
+    $w->find(1);
     ok(contains($w->bale->lastText(1), 'مسدود است') && $w->count("SELECT COUNT(*) FROM {chat_queue} WHERE status = 'waiting'") === 0, 'suspended user cannot search');
     $w->time += 25 * 3600;
-    $w->msg(1, Ui::FIND);
+    $w->find(1);
     ok($w->user(1)['status'] === 'active', 'suspension ends after 24 h');
 });
 
@@ -519,8 +521,8 @@ test('Inbox: blocks are silent, chats are never mixed, link can be renewed', fun
     $w->cb(1, 'st:blocks');
     ok(!contains(json_encode(last($w->bale->to(1))['p'], JSON_UNESCAPED_UNICODE), 'U5') && contains(json_encode(last($w->bale->to(1))['p'], JSON_UNESCAPED_UNICODE), 'فرستنده ناشناس'), 'block list hides the inbox sender');
     // Owner in a random chat: inbox content waits, partner never gets it.
-    $w->msg(1, Ui::FIND);
-    $w->msg(2, Ui::FIND);
+    $w->find(1);
+    $w->find(2);
     $w->msg(6, '/start msg' . $owner['inbox_code']);
     $w->msg(6, 'پیام صندوق');
     ok(!in_array('پیام صندوق', $w->bale->texts(2), true), 'partner never sees inbox messages');
@@ -558,7 +560,7 @@ test('Admin commands are admin-only', function () {
     $w->msg(9000, '/unsuspend Alpha');
     ok($w->user(1)['status'] === 'active', 'unsuspend');
     $w->msg(9000, '/maintenance on');
-    $w->msg(1, Ui::FIND);
+    $w->find(1);
     ok(contains($w->bale->lastText(1), 'به‌روزرسانی'), 'maintenance mode');
 });
 
@@ -566,8 +568,8 @@ test('Every admin command runs', function () {
     $w = new World(['rematch_cooldown_minutes' => 0]);
     $w->ready(1, 'Alpha');
     $w->ready(2, 'Beta');
-    $w->msg(1, Ui::FIND);
-    $w->msg(2, Ui::FIND);
+    $w->find(1);
+    $w->find(2);
     $chat = $w->activeChat(1)['chat_id'];
     $w->msg(1, 'سلام');
     $w->cb(2, "rr:c:{$chat}:msg");
@@ -618,8 +620,8 @@ test('A user who blocks the bot leaves their chat', function () {
     $w = new World();
     $a = $w->ready(1, 'Alpha');
     $w->ready(2, 'Beta');
-    $w->msg(1, Ui::FIND);
-    $w->msg(2, Ui::FIND);
+    $w->find(1);
+    $w->find(2);
     $w->handle(['update_id' => 999, 'my_chat_member' => ['chat' => ['id' => 2, 'type' => 'private'], 'from' => ['id' => 2], 'new_chat_member' => ['status' => 'kicked', 'user' => ['id' => 1]]]]);
     ok($w->activeChat(1) === null && contains(implode("\n", $w->bale->texts(1)), 'از ربات خارج شد'), 'partner told');
 });
@@ -646,8 +648,8 @@ test('Idle chats end automatically', function () {
     $w = new World(['chat_idle_minutes' => 30]);
     $w->ready(1, 'Alpha');
     $w->ready(2, 'Beta');
-    $w->msg(1, Ui::FIND);
-    $w->msg(2, Ui::FIND);
+    $w->find(1);
+    $w->find(2);
     $w->time += 31 * 60;
     $w->app->maintenance()->tick();
     ok($w->activeChat(1) === null && contains($w->bale->lastText(2), 'بی‌فعالیتی'), 'ended and told');
@@ -698,9 +700,9 @@ test('Unlimited chats gift and "refill today"', function () {
     $w->ready(2, 'Beta');
     $w->app->quota()->setUnlimited((int) $a['id'], true, $w->time + 86400);
     for ($i = 0; $i < 3; $i++) {
-        $w->msg(1, Ui::FIND);
+        $w->find(1);
         $w->app->quota()->resetToday((int) $w->user(2)['id']);
-        $w->msg(2, Ui::FIND);
+        $w->find(2);
         ok($w->activeChat(1) !== null, 'unlimited chat ' . ($i + 1));
         $w->msg(1, Ui::END);
     }
@@ -734,8 +736,8 @@ function panel_world(): World
     $w->ready(2, 'Beta', 'f');
     $w->ready(3, 'Gamma', 'f');
     $w->app->db->run("UPDATE {users} SET city = 'تهران', photo_file_id = 'PIC' WHERE bale_user_id = 2");
-    $w->msg(1, Ui::FIND);
-    $w->msg(2, Ui::FIND);
+    $w->find(1);
+    $w->find(2);
     $w->msg(1, 'سلام <b>بتا</b>');
     $w->media(2, 'photo', [['file_id' => 'PH', 'file_size' => 10]], 'عکس');
     $w->media(2, 'voice', ['file_id' => 'VO', 'duration' => 3]);
@@ -745,8 +747,8 @@ function panel_world(): World
     $w->msg(1, Ui::END);
     $w->msg(3, '/start msg' . $w->user(1)['inbox_code']);
     $w->msg(3, 'پیام ناشناس');
-    $w->msg(1, Ui::FIND);
-    $w->msg(3, Ui::FIND);
+    $w->find(1);
+    $w->find(3);
     Hamsobat\Metrics::record($w->app, 'webhook', 90.0);
     return $w;
 }
@@ -790,7 +792,7 @@ test('Panel data: every query runs on real data', function () {
     ok(is_array($d->errors()) && is_array($d->audit()) && $d->live()['chatting'] === 1, 'logs and live');
     $info = new Hamsobat\ServerInfo($w->app);
     $db = $info->database();
-    ok(count($db['tables']) === 23 && $db['size'] > 0, 'server info: 23 tables');
+    ok(count($db['tables']) === 24 && $db['size'] > 0, 'server info: 24 tables');
     ok(isset($info->system()['cpus'], $info->php()['version']), 'system + php');
 });
 
@@ -819,6 +821,124 @@ test('Panel actions: gifts, unlock, moderation, settings, all audited', function
     ok($w->app->settings->str('allowed_types') === 'text,photo,voice' && !$w->app->settings->bool('feature_profile_view_notify'), 'checkbox list saved, unchecked switch = off');
     ok(!$act->run('credit', ['user_id' => 99999, 'amount' => 5])[0], 'unknown user');
     ok($w->count('SELECT COUNT(*) FROM {admin_log}') === 14, 'every action on a real user audited (14)');
+});
+
+test('Who to talk to is asked before every search', function () {
+    $w = new World(['rematch_cooldown_minutes' => 0]);
+    $a = $w->ready(1, 'Alpha', 'm', 'any');
+    $w->ready(2, 'Beta', 'f', 'any');
+    $w->ready(3, 'Gamma', 'm', 'any');
+    $w->msg(1, Ui::FIND);
+    $ask = last($w->bale->to(1));
+    ok(contains($ask['p']['text'], 'این بار با کی') && !$w->app->matching()->isSearching((int) $a['id']), 'asked, not searching yet');
+    ok(($ask['p']['reply_markup']['inline_keyboard'][1][0]['text'] ?? '') === '🎲 فرقی نمی‌کنه ✓', 'last choice marked');
+    $w->cb(1, 'fg:f');
+    ok($w->user(1)['preferred_gender'] === 'f' && $w->app->matching()->isSearching((int) $a['id']), 'girl chosen, searching');
+    ok(contains(implode("\n", $w->bale->texts(1)), 'هم‌صحبت: 👩 دختر ✅'), 'choice confirmed in the same message');
+    $w->find(3, 'any');
+    ok($w->activeChat(3) === null, 'a boy is not matched with someone who chose girl');
+    $w->msg(3, Ui::CANCEL_SEARCH);
+    $w->find(2, 'any');
+    ok(($w->activeChat(1)['partner_id'] ?? 0) === (int) $w->user(2)['id'], 'matched with a girl');
+    $w->msg(1, Ui::END);
+    $w->msg(1, Ui::FIND);
+    ok(contains($w->bale->lastText(1), 'این بار با کی') && contains(json_encode(last($w->bale->to(1))['p'], JSON_UNESCAPED_UNICODE), '👩 دختر ✓'), 'asked again next time, girl marked');
+    $w->cb(1, 'fg:x');
+    ok(!$w->app->matching()->isSearching((int) $a['id']) && $w->app->quota()->status((int) $a['id'])['free_left'] === 4, 'cancel: nothing searched, nothing spent');
+    $w->find(1, 'any');
+    $w->msg(1, Ui::FIND);
+    ok(contains($w->bale->lastText(1), 'هنوز داریم می‌گردیم'), 'pressing 🔎 while searching does not ask again');
+});
+
+echo "\nv1.2: real Bale account (admin only)\n";
+
+test('Bale name and @username are saved, changes kept, never shown to other users', function () {
+    $w = new World();
+    $w->from[1] = ['first_name' => 'Ali', 'last_name' => 'Rezaei', 'username' => 'ali_real'];
+    $w->from[2] = ['first_name' => 'Sara', 'username' => 'sara_real'];
+    $a = $w->ready(1, 'Alpha');
+    $b = $w->ready(2, 'Beta', 'f');
+    $acc = $w->app->users()->accounts([$a['id'], $b['id']]);
+    ok(($acc[$a['id']]['username'] ?? '') === 'ali_real' && $acc[$a['id']]['first_name'] === 'Ali' && $acc[$a['id']]['last_name'] === 'Rezaei', 'saved on first contact');
+    // Changes are picked up (at most once a minute) and the old identity is kept.
+    $w->from[1] = ['first_name' => 'Ali', 'username' => 'ali_new'];
+    $w->msg(1, Ui::MY_PROFILE);
+    ok($w->app->users()->accounts([$a['id']])[$a['id']]['username'] === 'ali_real', 'not re-written within a minute');
+    $w->time += 61;
+    $w->msg(1, Ui::MY_PROFILE);
+    $now = $w->app->users()->accounts([$a['id']])[$a['id']];
+    ok($now['username'] === 'ali_new' && $now['last_name'] === null && $now['previous_names'] === '@ali_real · Ali Rezaei', 'updated, previous name kept');
+    // Nothing of it ever reaches another user: match card, profile view, relay, inbox.
+    $w->find(1);
+    $w->find(2);
+    $w->msg(2, Ui::VIEW_PROFILE);
+    $w->msg(1, 'سلام');
+    $w->msg(2, '/start msg' . $w->user(1)['inbox_code']);
+    $w->msg(2, 'ناشناس');
+    $w->msg(1, Ui::END);
+    $w->cb(1, 'ib:new');
+    $toB = implode("\n", $w->bale->texts(2));
+    $toA = implode("\n", $w->bale->texts(1));
+    foreach (['Ali', 'Rezaei', 'ali_real', 'ali_new'] as $leak) {
+        ok(!str_contains($toB, $leak), "partner never sees {$leak}");
+    }
+    foreach (['Sara', 'sara_real'] as $leak) {
+        ok(!str_contains($toA, $leak), "inbox owner never sees {$leak}");
+    }
+    ok(contains($toA, 'نام و آیدی حساب بله') || contains(Ui::guide(5, 3, 7), 'نام و آیدی حساب بله'), 'the guide tells users the admin can see it');
+});
+
+test('Live update: works before migrate.php, then old users are backfilled', function () {
+    $w = new World();
+    $w->app->db->pdo->exec('DROP TABLE t_user_accounts');
+    $w->from[1] = ['first_name' => 'Old', 'username' => 'old_user'];
+    $a = $w->ready(1, 'Alpha');
+    $w->ready(2, 'Beta');
+    $w->find(1);
+    $w->find(2);
+    $w->msg(1, 'سلام');
+    ok($w->activeChat(2) !== null && $w->bale->lastText(2) === 'سلام', 'bot works without the new table');
+    ok($w->count("SELECT COUNT(*) FROM {error_logs}") === 0, 'no errors logged');
+    $d = new Hamsobat\PanelData($w->app);
+    ok($d->user((int) $a['id'])['account'] === null && $d->users(['q' => 'old_user'], 1)[1] === 0, 'panel works without it too');
+    // migrate.php runs while the bot is live
+    foreach (Hamsobat\Database::schema(dirname(__DIR__) . '/database.sql', 't_') as $sql) {
+        $w->app->db->pdo->exec($sql);
+    }
+    $w2 = new World(); // a new request = a fresh table check (same tables, emptied)
+    $w2->from[1] = ['first_name' => 'Old', 'username' => 'old_user'];
+    $a = $w2->ready(1, 'Alpha');
+    $w2->app->db->run('DELETE FROM {user_accounts}');
+    $w2->ready(2, 'Beta');
+    $w2->ready(3, 'Gamma');
+    $w2->app->db->run('DELETE FROM {user_accounts} WHERE user_id <> ?', [$a['id']]);
+    $w2->bale->chats[2] = ['first_name' => 'Bea', 'username' => 'bea_bale'];
+    ok($w2->app->users()->backfillAccounts(30) === 3, 'three users without account looked up');
+    $acc = $w2->app->users()->accounts([$w2->user(1)['id'], $w2->user(2)['id'], $w2->user(3)['id']]);
+    ok($acc[$w2->user(2)['id']]['username'] === 'bea_bale' && $acc[$w2->user(2)['id']]['source'] === 'getChat', 'filled from getChat');
+    ok($acc[$w2->user(3)['id']]['source'] === 'none' && $w2->app->users()->backfillAccounts(30) === 0, 'failed lookup not repeated');
+    $w2->from[3] = ['first_name' => 'Gam', 'username' => 'gam_bale'];
+    $w2->time += 61;
+    $w2->msg(3, Ui::MY_PROFILE);
+    ok($w2->app->users()->accounts([$w2->user(3)['id']])[$w2->user(3)['id']]['username'] === 'gam_bale', 'the next message fills it');
+});
+
+test('Panel: search by @username or real name, refresh from Bale', function () {
+    $w = new World();
+    $w->from[1] = ['first_name' => 'Mahsa', 'last_name' => 'Karimi', 'username' => 'mahsa_k'];
+    $u = $w->ready(1, 'Moon', 'f');
+    $d = new Hamsobat\PanelData($w->app);
+    foreach (['mahsa_k', 'Karimi', 'Mahsa'] as $q) {
+        [$rows, $total] = $d->users(['q' => $q], 1);
+        ok($total === 1 && ($rows[0]['account']['username'] ?? '') === 'mahsa_k', "found by {$q}");
+    }
+    ok(contains(Hamsobat\Html::account($rows[0]['account']), 'https://ble.ir/mahsa_k'), 'links to the Bale profile');
+    $act = new Hamsobat\PanelActions($w->app, new Hamsobat\PanelAuth($w->app));
+    $w->bale->chats[1] = ['first_name' => 'Mahsa', 'username' => 'mahsa_new'];
+    $r = $act->run('fetch_account', ['user_id' => $u['id']]);
+    ok($r[0] && contains($r[1], '@mahsa_new') && contains($w->app->users()->accounts([$u['id']])[$u['id']]['previous_names'], 'mahsa_k'), 'refresh from Bale');
+    $w->msg(9000, '/user Moon');
+    ok(contains($w->bale->lastText(9000), '@mahsa_new'), 'admin /user command shows it');
 });
 
 echo "\n" . $GLOBALS['pass'] . ' passed, ' . count($GLOBALS['fail']) . " failed\n";

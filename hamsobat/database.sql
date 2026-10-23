@@ -353,3 +353,25 @@ CREATE TABLE IF NOT EXISTS hs_admin_log (
   PRIMARY KEY (id),
   KEY hs_ix_adminlog_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------------
+-- v1.2 (real Bale account info for the admin). New table only, like v1.1:
+-- nothing above changes, so the bot keeps running while it is added.
+-- ---------------------------------------------------------------------------
+
+-- The Bale account behind each user (name and @username from Bale itself, not the profile).
+-- Only the admin panel shows it; other users never see it. previous_names keeps old values
+-- ("@old_username · Old Name", newest first) when the user changes them in Bale.
+CREATE TABLE IF NOT EXISTS hs_user_accounts (
+  user_id INT UNSIGNED NOT NULL,
+  username VARCHAR(64) NULL,
+  first_name VARCHAR(128) NULL,
+  last_name VARCHAR(128) NULL,
+  previous_names VARCHAR(1000) NULL,
+  source VARCHAR(8) NOT NULL DEFAULT 'update',
+  first_seen_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  PRIMARY KEY (user_id),
+  KEY hs_ix_accounts_username (username),
+  CONSTRAINT hs_fk_accounts_user FOREIGN KEY (user_id) REFERENCES hs_users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

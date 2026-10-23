@@ -44,7 +44,7 @@ final class Router
         }
         $app = $this->app;
         $baleId = (int) $m['from']['id'];
-        [$user, $isNew] = $app->users()->fromBale($baleId);
+        [$user, $isNew] = $app->users()->fromBale($baleId, $m['from']);
         $admin = $app->isAdmin($baleId);
         if (!$admin && $this->blocked($user)) {
             return;
@@ -129,7 +129,7 @@ final class Router
         }
         $result = null;
         try {
-            [$user] = $this->app->users()->fromBale($baleId);
+            [$user] = $this->app->users()->fromBale($baleId, (array) ($cb['from'] ?? []));
             $admin = $this->app->isAdmin($baleId);
             $data = (string) ($cb['data'] ?? '');
             $prefix = strstr($data, ':', true) ?: $data;

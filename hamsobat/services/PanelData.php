@@ -192,9 +192,15 @@ final class PanelData
                 $where[] = '(u.id = ? OR u.bale_user_id = ?)';
                 array_push($p, (int) $plain, (int) $plain);
             } else {
-                $where[] = '(u.nickname LIKE ? OR u.display_name LIKE ? OR u.city LIKE ?)';
                 $like = '%' . addcslashes($plain, '%_\\') . '%';
+                $accounts = $this->db->hasTable('user_accounts')
+                    ? ' OR EXISTS (SELECT 1 FROM {user_accounts} ac WHERE ac.user_id = u.id AND (ac.username LIKE ? OR ac.first_name LIKE ? OR ac.last_name LIKE ? OR ac.previous_names LIKE ?))'
+                    : '';
+                $where[] = '(u.nickname LIKE ? OR u.display_name LIKE ? OR u.city LIKE ?' . $accounts . ')';
                 array_push($p, $like, $like, $like);
+                if ($accounts) {
+                    array_push($p, $like, $like, $like, $like);
+                }
             }
         }
         switch ($f['status'] ?? '') {
@@ -241,7 +247,17 @@ final class PanelData
              FROM {users} u WHERE {$w} ORDER BY {$order} LIMIT " . self::PER_PAGE . ' OFFSET ' . max(0, ($page - 1) * self::PER_PAGE),
             $p
         );
-        return [$rows, $total];
+        return [$this->withAccounts($rows, 'id'), $total];
+    }
+
+    /** Adds 'account' (real Bale name and @username, admin only) to each row. */
+    public function withAccounts(array $rows, string $idKey, string $as = 'account'): array
+    {
+        $accounts = $this->app->users()->accounts(array_column($rows, $idKey));
+        foreach ($rows as &$r) {
+            $r[$as] = $accounts[(int) $r[$idKey]] ?? null;
+        }
+        return $rows;
     }
 
     public function user(int $id): ?array
@@ -252,6 +268,7 @@ final class PanelData
         }
         $db = $this->db;
         $u['interests'] = $this->app->users()->interests($id);
+        $u['account'] = $this->app->users()->accounts([$id])[$id] ?? null;
         $u['quota'] = $this->app->quota()->status($id);
         $u['active_chat'] = $this->app->matching()->activeChat($id);
         $u['searching'] = $this->app->matching()->isSearching($id);
@@ -321,6 +338,9 @@ final class PanelData
         }
         $c['one'] = $this->db->row('SELECT * FROM {users} WHERE id = ?', [$c['user_one_id']]);
         $c['two'] = $this->db->row('SELECT * FROM {users} WHERE id = ?', [$c['user_two_id']]);
+        $accounts = $this->app->users()->accounts([$c['user_one_id'], $c['user_two_id']]);
+        $c['one']['account'] = $accounts[(int) $c['user_one_id']] ?? null;
+        $c['two']['account'] = $accounts[(int) $c['user_two_id']] ?? null;
         $c['reports'] = $this->db->all('SELECT r.*, a.nickname reporter FROM {reports} r JOIN {users} a ON a.id = r.reporter_user_id WHERE r.chat_id = ? ORDER BY r.id', [$id]);
         $c['stored'] = (int) $this->db->value('SELECT COUNT(*) FROM {messages} WHERE chat_id = ?', [$id]);
         return $c;
@@ -358,7 +378,7 @@ final class PanelData
              FROM {anonymous_inbox} i JOIN {users} s ON s.id = i.sender_user_id JOIN {users} r ON r.id = i.recipient_user_id
              ORDER BY i.id DESC LIMIT ' . self::PER_PAGE . ' OFFSET ' . max(0, ($page - 1) * self::PER_PAGE)
         );
-        return [$rows, $total];
+        return [$this->withAccounts($rows, 'sender_user_id', 's_account'), $total];
     }
 
     public function thread(int $sessionId): ?array
@@ -369,6 +389,9 @@ final class PanelData
         }
         $s['owner'] = $this->db->row('SELECT * FROM {users} WHERE id = ?', [$s['owner_user_id']]);
         $s['visitor'] = $this->db->row('SELECT * FROM {users} WHERE id = ?', [$s['visitor_user_id']]);
+        $accounts = $this->app->users()->accounts([$s['owner_user_id'], $s['visitor_user_id']]);
+        $s['owner']['account'] = $accounts[(int) $s['owner_user_id']] ?? null;
+        $s['visitor']['account'] = $accounts[(int) $s['visitor_user_id']] ?? null;
         $s['messages'] = $this->db->all('SELECT * FROM {anonymous_inbox} WHERE session_id = ? ORDER BY id', [$sessionId]);
         return $s;
     }

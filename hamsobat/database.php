@@ -13,6 +13,7 @@ final class Database
 {
     /** Number of queries this request (shown on the panel's performance charts). */
     public int $queries = 0;
+    private array $tables = [];
 
     public function __construct(public readonly PDO $pdo, public readonly string $prefix)
     {
@@ -107,6 +108,16 @@ final class Database
                 throw $e;
             }
         }
+    }
+
+    /**
+     * True when a table exists. Code for tables added in a newer version asks this first,
+     * so new files work even before migrate.php has run (live updates).
+     */
+    public function hasTable(string $name): bool
+    {
+        $full = $this->t($name);
+        return $this->tables[$full] ??= (bool) $this->pdo->query('SHOW TABLES LIKE ' . $this->pdo->quote(addcslashes($full, '_%')))->fetchColumn();
     }
 
     /** database.sql split into statements, with hs_ replaced by the configured prefix. */

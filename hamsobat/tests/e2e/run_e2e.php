@@ -85,7 +85,7 @@ echo "End-to-end (webhook.php over HTTP)\n";
 test('migrate.php creates every table and is safe to run twice', function () use ($root, $env) {
     $a = shell_exec("{$env} php {$root}/migrate.php");
     $b = shell_exec("{$env} php {$root}/migrate.php");
-    ok(substr_count((string) $a, '✔') === 23 && str_contains((string) $b, 'completed successfully'), trim((string) $b));
+    ok(substr_count((string) $a, '✔') === 24 && str_contains((string) $b, 'completed successfully'), trim((string) $b));
     ok(http('migrate.php')[0] === 403 && http('migrate.php?pass=wrong')[0] === 403, 'password required over HTTP');
 });
 
@@ -122,8 +122,11 @@ test('two users register, match and chat through the webhook', function () {
     }
     $texts = implode("\n", array_column(array_column(sentTo(1), 'body'), 'text'));
     ok(str_contains($texts, 'پروفایلت آماده‌ست') && str_contains($texts, 'همه‌چیز آماده‌ست'), 'registered; channel membership checked with getChatMember');
-    hook(update(1, Ui::FIND));
-    hook(update(2, Ui::FIND));
+    global $uid;
+    foreach ([1, 2] as $id) {
+        hook(update($id, Ui::FIND));
+        hook(json_encode(['update_id' => $uid++, 'callback_query' => ['id' => "c{$uid}", 'from' => ['id' => $id], 'data' => 'fg:any', 'message' => ['message_id' => 1, 'chat' => ['id' => $id, 'type' => 'private']]]]));
+    }
     $toAlpha = sentTo(1);
     ok(str_contains(end($toAlpha)['body']['text'] ?? '', 'سلام کن'), 'matched');
     hook(update(2, 'سلام از بتا 👋'));

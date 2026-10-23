@@ -16,7 +16,7 @@ final class PanelActions
     {
         $uid = (int) ($in['user_id'] ?? 0);
         $user = $uid ? $this->app->users()->get($uid) : null;
-        $needsUser = ['credit', 'unlimited', 'unlock', 'reset_today', 'suspend', 'unsuspend', 'end_user_chat', 'message', 'nickname', 'clear'];
+        $needsUser = ['credit', 'unlimited', 'unlock', 'reset_today', 'suspend', 'unsuspend', 'end_user_chat', 'message', 'nickname', 'clear', 'fetch_account'];
         if (in_array($action, $needsUser, true) && !$user) {
             return [false, 'کاربر پیدا نشد.'];
         }
@@ -32,6 +32,7 @@ final class PanelActions
             'message'       => $this->message($user, (string) ($in['text'] ?? '')),
             'nickname'      => $this->nickname($user, (string) ($in['nickname'] ?? '')),
             'clear'         => $this->clear($user, (string) ($in['field'] ?? '')),
+            'fetch_account' => $this->fetchAccount($user),
             'report'        => $this->report((int) ($in['report_id'] ?? 0), (string) ($in['status'] ?? '')),
             'settings'      => $this->settings($in),
             'cleanup'       => $this->cleanup(),
@@ -152,6 +153,20 @@ final class PanelActions
         }
         $this->app->users()->update((int) $user['id'], [$col => null]);
         return [true, ['photo' => 'عکس', 'bio' => 'درباره من', 'city' => 'شهر'][$field] . ' پاک شد.'];
+    }
+
+    /** Asks Bale (getChat) for the user's current name and @username. */
+    private function fetchAccount(array $user): array
+    {
+        if (!$this->app->db->hasTable('user_accounts')) {
+            return [false, 'اول migrate.php را اجرا کنید.'];
+        }
+        $res = $this->app->bale->getChat((int) $user['bale_user_id']);
+        if (empty($res['ok']) || !is_array($res['result'] ?? null)) {
+            return [false, 'بله اطلاعات را نداد: ' . ($res['description'] ?? '?')];
+        }
+        $this->app->users()->saveAccount((int) $user['id'], $res['result'], 'getChat');
+        return [true, 'حساب بله به‌روز شد: ' . (Users::accountLabel($this->app->users()->accounts([(int) $user['id']])[(int) $user['id']] ?? []) ?: 'بدون نام و آیدی')];
     }
 
     private function report(int $id, string $status): array

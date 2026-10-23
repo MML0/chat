@@ -8,7 +8,11 @@ final class MatchingHandler extends Handler
 {
     public const SEARCHING = '🔎 داریم برات هم‌صحبت پیدا می‌کنیم...';
 
-    public function find(array $user, int $attempt = 1): void
+    /**
+     * Every new search first asks "who do you want to talk to?" ($ask). The answer (fg:…)
+     * saves it as the user's preference and calls find() again with $ask = false.
+     */
+    public function find(array $user, int $attempt = 1, bool $ask = true): void
     {
         $app = $this->app;
         $id = (int) $user['id'];
@@ -20,22 +24,22 @@ final class MatchingHandler extends Handler
             $this->say($user, '📝 اول پروفایلت رو کامل کن، بعد می‌تونی هم‌صحبت پیدا کنی.', Ui::onboardingKeyboard());
             return;
         }
-        if ($attempt === 1 && !$app->rate()->allow($id, 'search', $app->settings->int('search_rate_per_minute'), 60)) {
-            $this->say($user, '⏳ کمی صبر کن و چند لحظه دیگه دوباره امتحان کن.');
-            return;
-        }
         $app->handler(ReferralHandler::class)->qualify($user); // their own pending referral, if any
         $req = $app->requirements()->status($user);
         if (!$req['ok']) {
             $app->handler(ReferralHandler::class)->requirementsScreen($user, $req);
             return;
         }
-        if (!$user['preferred_gender']) {
+        if (!$app->quota()->hasAvailable($id)) {
+            $this->outOfQuota($user);
+            return;
+        }
+        if (($ask || !$user['preferred_gender']) && !$app->matching()->isSearching($id)) {
             $this->askGender($user);
             return;
         }
-        if (!$app->quota()->hasAvailable($id)) {
-            $this->outOfQuota($user);
+        if ($attempt === 1 && !$app->rate()->allow($id, 'search', $app->settings->int('search_rate_per_minute'), 60)) {
+            $this->say($user, '⏳ کمی صبر کن و چند لحظه دیگه دوباره امتحان کن.');
             return;
         }
 
@@ -49,7 +53,7 @@ final class MatchingHandler extends Handler
         switch ($r['status']) {
             case 'matched':
                 if (!$this->announce($r['chat_id']) && $attempt < 3) {
-                    $this->find($this->fresh($user), $attempt + 1); // partner was unreachable: try the next one
+                    $this->find($this->fresh($user), $attempt + 1, false); // partner was unreachable: try the next one
                 }
                 return;
             case 'queued':
@@ -150,11 +154,13 @@ final class MatchingHandler extends Handler
         ]));
     }
 
+    /** Asked before every search. The last choice is marked with ✓. */
     private function askGender(array $user): void
     {
-        $this->say($user, '🎯 دوست داری با کی هم‌صحبت بشی؟', Ui::inline([
-            [['👩 دختر', 'fg:f'], ['👨 پسر', 'fg:m']],
-            [['🎲 فرقی نمی‌کنه', 'fg:any'], ['❌ لغو', 'fg:x']],
+        $mark = fn (string $g, string $label) => $label . (($user['preferred_gender'] ?? '') === $g ? ' ✓' : '');
+        $this->say($user, '🎯 این بار با کی می‌خوای هم‌صحبت بشی؟', Ui::inline([
+            [[$mark('f', '👩 دختر'), 'fg:f'], [$mark('m', '👨 پسر'), 'fg:m']],
+            [[$mark('any', '🎲 فرقی نمی‌کنه'), 'fg:any'], ['❌ لغو', 'fg:x']],
         ]));
     }
 
@@ -170,12 +176,14 @@ final class MatchingHandler extends Handler
         }
         if (preg_match('~^fg:(m|f|any|x)$~', $data, $m)) {
             if ($m[1] === 'x') {
+                $this->editOrSend($user, $cb, '❌ جست‌وجو لغو شد.');
                 $this->home($user, 'باشه 👌');
                 return null;
             }
             $this->app->users()->update((int) $user['id'], ['preferred_gender' => $m[1]]);
-            $this->find($this->fresh($user));
-            return '✅ ذخیره شد';
+            $this->editOrSend($user, $cb, '🎯 هم‌صحبت: ' . Ui::genderName($m[1]) . ' ✅');
+            $this->find($this->fresh($user), 1, false);
+            return null;
         }
         return null;
     }

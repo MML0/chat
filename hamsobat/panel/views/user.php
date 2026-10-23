@@ -26,6 +26,7 @@ $ledgerReasons = ['chat' => '💬 چت', 'referral' => '🎁 دعوت', 'admin' 
   <div class="ph-avatar"><?= Html::avatar($u, 'xl', $online) ?></div>
   <div class="ph-main">
     <h2><?= Html::e($u['nickname'] ?? 'بدون لقب') ?> <small class="muted">#<?= Html::n($id) ?></small></h2>
+    <p class="ph-account"><?= Html::account($u['account']) ?></p>
     <p><?= Html::e($u['display_name'] ?? '—') ?> · <?= Html::gender($u['gender']) ?> · <?= $u['birth_date'] ? Html::n(Text::age($u['birth_date'], $today)) . ' ساله' : 'سن نامشخص' ?><?= $u['city'] ? ' · 📍 ' . Html::e($u['city']) : '' ?></p>
     <div class="badges">
       <?php if ($online): ?><span class="badge ok">🟢 آنلاین</span><?php endif; ?>
@@ -51,7 +52,9 @@ $ledgerReasons = ['chat' => '💬 چت', 'referral' => '🎁 دعوت', 'admin' 
     <div class="card">
       <header><h3>🪪 مشخصات</h3></header>
       <dl class="info">
-        <dt>آیدی بله</dt><dd><code><?= Html::e($u['bale_user_id']) ?></code> <button class="link" data-copy="<?= Html::e($u['bale_user_id']) ?>">کپی</button></dd>
+        <dt>حساب بله</dt><dd><?= Html::account($u['account'], true) ?> <?= Html::action($csrf, 'fetch_account', ['user_id' => $id], '🔄 دریافت از بله', 'btn sm ghost') ?></dd>
+        <?php if (!empty($u['account']['previous_names'])): ?><dt>نام‌های قبلی</dt><dd class="muted"><?= Html::e(str_replace(' | ', '  ←  ', $u['account']['previous_names'])) ?></dd><?php endif; ?>
+        <dt>آیدی عددی بله</dt><dd><code><?= Html::e($u['bale_user_id']) ?></code> <button class="link" data-copy="<?= Html::e($u['bale_user_id']) ?>">کپی</button></dd>
         <dt>اسم نمایشی</dt><dd><?= Html::e($u['display_name'] ?? '—') ?></dd>
         <dt>لقب</dt><dd><?= Html::e($u['nickname'] ?? '—') ?></dd>
         <dt>تاریخ تولد</dt><dd><?= $u['birth_date'] ? Html::dayName($u['birth_date']) . ' <span class="muted">(' . Html::e($u['birth_date']) . ')</span>' : '—' ?></dd>

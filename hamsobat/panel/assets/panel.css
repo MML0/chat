@@ -206,6 +206,10 @@ textarea { width: 100%; resize: vertical; margin-bottom: 8px; }
 .avatar.sm { width: 28px; height: 28px; font-size: 12px; }
 .avatar.lg { width: 52px; height: 52px; font-size: 20px; }
 .avatar.xl { width: 88px; height: 88px; font-size: 34px; box-shadow: 0 10px 30px -10px rgba(139, 109, 255, .8); }
+.acc { color: var(--muted); font-size: 12.5px; }
+.acc span { color: var(--text); }
+.acc-user { font-weight: 600; }
+.ph-account { margin: 0 0 2px !important; }
 .who { display: inline-flex; align-items: center; gap: 7px; color: var(--text); font-weight: 600; vertical-align: middle; }
 .who:hover { color: var(--primary2); text-decoration: none; }
 .av-wrap { position: relative; display: inline-flex; flex: none; }

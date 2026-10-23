@@ -18,10 +18,11 @@ final class Users
     }
 
     /**
-     * Finds or creates the user who sent an update.
+     * Finds or creates the user who sent an update. $from is Bale's "from" object: its name
+     * and @username are kept in {user_accounts} for the admin (at most once a minute).
      * @return array{0:array,1:bool} [user row, true when created by this call]
      */
-    public function fromBale(int $baleUserId): array
+    public function fromBale(int $baleUserId, array $from = []): array
     {
         $db = $this->app->db;
         $now = $this->app->ts();
@@ -29,6 +30,7 @@ final class Users
         if ($user) {
             if ($user['last_seen_at'] === null || strtotime($user['last_seen_at'] . ' UTC') < $this->app->now() - 60) {
                 $db->run('UPDATE {users} SET last_seen_at = ? WHERE id = ?', [$now, $user['id']]);
+                $this->saveAccount((int) $user['id'], $from);
             }
             return [$user, false];
         }
@@ -42,7 +44,9 @@ final class Users
                     'updated_at'    => $now,
                     'last_seen_at'  => $now,
                 ]);
-                return [$db->row('SELECT * FROM {users} WHERE bale_user_id = ?', [$baleUserId]), true];
+                $user = $db->row('SELECT * FROM {users} WHERE bale_user_id = ?', [$baleUserId]);
+                $this->saveAccount((int) $user['id'], $from);
+                return [$user, true];
             } catch (\PDOException $e) {
                 if (!Database::isDuplicate($e)) {
                     throw $e;
@@ -55,6 +59,88 @@ final class Users
             }
         }
         throw new \RuntimeException('could not create user');
+    }
+
+    // ------------------------------------------------------------------ Bale account (admin only)
+
+    /**
+     * Saves the Bale name and @username when they changed; the old ones go to previous_names.
+     * Never throws: before migrate.php has created the table, it simply does nothing.
+     */
+    public function saveAccount(int $userId, array $from, string $source = 'update'): void
+    {
+        $clean = function ($v, int $max): ?string {
+            $v = trim(Text::normalize((string) ($v ?? '')));
+            return $v === '' ? null : mb_substr($v, 0, $max);
+        };
+        if (!$from) {
+            return;
+        }
+        $username = $clean(ltrim((string) ($from['username'] ?? ''), '@'), 64);
+        $first = $clean($from['first_name'] ?? null, 128);
+        $last = $clean($from['last_name'] ?? null, 128);
+        $db = $this->app->db;
+        $now = $this->app->ts();
+        try {
+            if (!$db->hasTable('user_accounts')) {
+                return;
+            }
+            $old = $db->row('SELECT * FROM {user_accounts} WHERE user_id = ?', [$userId]);
+            if ($old && $old['username'] === $username && $old['first_name'] === $first && $old['last_name'] === $last) {
+                return;
+            }
+            $previous = $old['previous_names'] ?? null;
+            $oldLabel = $old ? self::accountLabel($old) : '';
+            if ($oldLabel !== '' && $oldLabel !== self::accountLabel(['username' => $username, 'first_name' => $first, 'last_name' => $last])) {
+                $previous = mb_substr($oldLabel . ($previous ? ' | ' . $previous : ''), 0, 1000);
+            }
+            $db->run(
+                'INSERT INTO {user_accounts} (user_id, username, first_name, last_name, previous_names, source, first_seen_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE username = VALUES(username), first_name = VALUES(first_name), last_name = VALUES(last_name),
+                   previous_names = VALUES(previous_names), source = VALUES(source), updated_at = VALUES(updated_at)',
+                [$userId, $username, $first, $last, $previous, $source, $now, $now]
+            );
+        } catch (\PDOException $e) {
+            $this->app->log->warning('saveAccount: ' . $e->getMessage());
+        }
+    }
+
+    /** "@username · First Last" (either part may be missing). */
+    public static function accountLabel(array $a): string
+    {
+        $name = trim(($a['first_name'] ?? '') . ' ' . ($a['last_name'] ?? ''));
+        return implode(' · ', array_filter([!empty($a['username']) ? '@' . $a['username'] : '', $name]));
+    }
+
+    /** Bale accounts of several users, keyed by user id. Empty before migrate.php ran. */
+    public function accounts(array $userIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $userIds))));
+        if (!$ids || !$this->app->db->hasTable('user_accounts')) {
+            return [];
+        }
+        $rows = $this->app->db->all('SELECT * FROM {user_accounts} WHERE user_id IN (' . implode(',', $ids) . ')');
+        return array_column($rows, null, 'user_id');
+    }
+
+    /**
+     * Users seen before v1.2 have no account row yet: ask Bale (getChat) for a few at a time.
+     * A failed lookup stores an empty row so it is not asked again; the next message fills it.
+     * @return int how many were looked up
+     */
+    public function backfillAccounts(int $limit = 30): int
+    {
+        $db = $this->app->db;
+        if (!$db->hasTable('user_accounts')) {
+            return 0;
+        }
+        $missing = $db->all('SELECT u.id, u.bale_user_id FROM {users} u LEFT JOIN {user_accounts} a ON a.user_id = u.id WHERE a.user_id IS NULL ORDER BY u.last_seen_at DESC LIMIT ' . (int) $limit);
+        foreach ($missing as $u) {
+            $res = $this->app->bale->getChat((int) $u['bale_user_id']);
+            $info = !empty($res['ok']) && is_array($res['result'] ?? null) ? $res['result'] : [];
+            $this->saveAccount((int) $u['id'], $info ?: ['first_name' => null], $info ? 'getChat' : 'none');
+        }
+        return count($missing);
     }
 
     public function get(int $id): ?array

@@ -4,7 +4,7 @@ A Bale bot in plain PHP + MySQL. Everything happens inside Bale: messages, the r
 
 **Features**
 - **Profile:** registration one question at a time; Jalali birth date (only the age is shown).
-- **Matching:** gender preferences in both directions, and no matching with people you blocked.
+- **Matching:** before **every** search the bot asks "who do you want to talk to?" (girl / boy / either, last choice marked ✓). Preferences are respected in both directions, and there's no matching with people you blocked.
 - **Anonymous relay:** text, photo, voice, audio, sticker, video and GIF.
 - **In chat:** next, end, profile view (with an optional "someone viewed your profile" notice), block and report.
 - **Access:** a required channel (checked on the server) and a required first referral.
@@ -48,7 +48,7 @@ hamsobat/
    - **bale.bot_token**, and **bale.bot_username** without `@`
    - **bale.webhook_secret**, **admin.password**, **cron_secret:** long random strings, all different
    - **admin.ids:** your Bale user id. Not known yet? Leave it, finish the steps, send `/start` to the bot, then open `check.php`. It lists the newest users with their Bale ids.
-4. **Tables:** open `https://YOUR.SITE/hamsobat/migrate.php?pass=ADMIN_PASSWORD`. You should see ✔ for 23 tables.
+4. **Tables:** open `https://YOUR.SITE/hamsobat/migrate.php?pass=ADMIN_PASSWORD`. You should see ✔ for 24 tables.
 5. **Self-test:** open `https://YOUR.SITE/hamsobat/check.php?pass=ADMIN_PASSWORD`. Every line should be ✔.
 6. **Webhook:** open `https://YOUR.SITE/hamsobat/check.php?pass=ADMIN_PASSWORD&setwebhook=1`. The bot now runs from this folder.
 7. **Required channel:**
@@ -59,6 +59,16 @@ hamsobat/
 9. **Optional cron:** call `https://YOUR.SITE/hamsobat/cron/cleanup.php?k=CRON_SECRET` every minute, from the panel's cron or a free external cron service. Without it, the same work runs inside the webhook while people use the bot. The only difference: a lone searcher gets "nobody found" a bit late.
 
 HTTPS is required by Bale for webhooks.
+
+### Upgrading a live bot to 1.2 (no downtime)
+1. Upload the new zip over the old folder. Your `config.php` stays.
+   - The bot keeps running even before step 2: code that needs the new table checks for it first and simply skips it until it exists.
+2. Open `migrate.php?pass=…`.
+   - It adds `user_accounts`, and also v1.1's 3 tables if you skipped 1.1.
+   - It never changes or drops existing tables, so users, chats and settings stay as they are, and the old files still work on this database.
+3. That's all. Each user's real Bale name and @username fill in the next time they send something.
+   - Users who don't come back are looked up with `getChat`, 30 per hourly cleanup.
+   - The user page also has a **🔄 دریافت از بله** button.
 
 ### Upgrading from 1.0 to 1.1 (admin panel)
 1. Upload the new zip over the old folder. It contains no `config.php`, so yours stays.
@@ -99,8 +109,8 @@ Examples: `/set daily_free_chats 7`, `/feature inbox off`, `/maintenance on`.
 |---|---|
 | 📊 **Dashboard** | Users, online now, people searching or chatting, chats and messages today vs yesterday, average chat length, 30-day trend, busiest hours (weekday × hour heatmap), gender, ages, cities, interests, bot response time. The **most active users**, each with a one-click **🎁 +50 credits** and **💎 7 days unlimited**. The latest chats. |
 | ⚡ **Live** | Every message relayed between users appears a few seconds later (sender ➜ receiver, text, photo, voice). Can be paused. Shows active chats and live counters. |
-| 👥 **Users** | Search by nickname, name, city, Bale id or #id. Filters: online, incomplete, suspended, no-referral, unlimited, gender. Sort by newest, last seen, most chats, most messages, most invites, most credits. |
-| 👤 **User** | **Profile:** photo, display name, nickname, birth date (Shamsi + age), gender, wanted gender, city, bio, interests, privacy, joined, last seen, inviter, links. **History:** activity chart, all chats, invited friends, credit history, reports. **Actions:** gift credits (+10 … +1000 or any number), unlimited chats (1 / 7 / 30 days / forever), unlock without referral, refill today's free chats, message the user from the bot, end their chat, suspend (1 h / 24 h / 7 days / forever), rename, delete photo, bio or city. |
+| 👥 **Users** | Search by nickname, name, city, **real Bale name or @username**, Bale id or #id. Filters: online, incomplete, suspended, no-referral, unlimited, gender. Sort by newest, last seen, most chats, most messages, most invites, most credits. |
+| 👤 **User** | **Bale account:** real name and @username (links to the Bale profile), plus old names if they changed them. **Profile:** photo, display name, nickname, birth date (Shamsi + age), gender, wanted gender, city, bio, interests, privacy, joined, last seen, inviter, links. **History:** activity chart, all chats, invited friends, credit history, reports. **Actions:** gift credits (+10 … +1000 or any number), unlimited chats (1 / 7 / 30 days / forever), unlock without referral, refill today's free chats, message the user from the bot, end their chat, suspend (1 h / 24 h / 7 days / forever), rename, delete photo, bio or city. |
 | 💬 **Chats** | All chats, or only active or reported ones. Opening one shows **the full conversation as chat bubbles**: photos, voice players and videos inline, filtered messages marked in red, and live updates while the chat is still active. |
 | 📩 **Anonymous inbox** | Every anonymous message, with its real sender visible only to you, and each conversation as a thread. |
 | 🚩 **Reports** | Each report with its reason, the last messages, how many people reported that user, and suspend / resolve / dismiss buttons. |
@@ -115,7 +125,8 @@ Examples: `/set daily_free_chats 7`, `/feature inbox off`, `/maintenance on`.
 - **Forms:** every form carries a CSRF token.
 - **Headers:** a strict Content-Security-Policy, and no framing.
 - **Media:** fetched with the bot token on the server; the token never reaches the browser.
-- **Users are told:** the bot's guide says messages are stored for safety, may be reviewed by the admin, and are deleted after `message_retention_days`. Raise that setting if you want to keep chats longer.
+- **Users are told:** the bot's guide says the admin can see their Bale name and @username and their messages, and that messages are deleted after `message_retention_days`. Raise that setting if you want to keep chats longer.
+- **Never shown to other users:** the real Bale account is only stored in `{user_accounts}`, which only the panel and the admin `/user` command read. A test checks that partners and inbox recipients never receive it.
 
 **Bot commands** (in Bale, only for `admin.ids`). Same powers, for when you're away from a computer:
 
@@ -222,9 +233,11 @@ If any step fails, send `/errors` to the bot. It shows Bale's exact answer.
 They need a MySQL/MariaDB database whose name contains `test` (and `e2e` for the end-to-end run). The defaults are `127.0.0.1:3307`, user `hs`/`hs`; override them with `HS_TEST_DB_*` environment variables.
 
 ```sh
-php tests/run.php              # 263 checks: validation, registration, date picker, referrals + abuse,
-                               # channel gate, quota boundaries, unlimited, matching rules, block, relay,
-                               # reports, inbox, admin, metrics, every panel query and panel action
+php tests/run.php              # 296 checks: validation, registration, date picker, referrals + abuse,
+                               # channel gate, quota boundaries, unlimited, matching rules, asking who to
+                               # talk to on every search, block, relay, reports, inbox, admin, metrics,
+                               # every panel query and action, Bale account capture (never leaked),
+                               # running before migrate.php (live update) and the getChat backfill
 php tests/concurrency.php 40   # 50 parallel processes searching at once: invariants hold
 php tests/e2e/run_e2e.php      # 78 checks over HTTP + fake Bale: webhook.php, migrate.php, check.php, cron,
                                # panel login with the Bale code, every page, CSRF, actions, live API, media

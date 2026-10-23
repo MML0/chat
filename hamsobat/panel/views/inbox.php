@@ -13,9 +13,9 @@ if ($sessionId) {
     }
     ?>
     <section class="card chat-head">
-      <a class="person side-one" href="?p=user&id=<?= (int) $t['visitor']['id'] ?>"><?= Html::avatar($t['visitor'], 'lg') ?><span><b><?= Html::e($t['visitor']['nickname'] ?? '#' . $t['visitor']['id']) ?></b><small>فرستنده ناشناس (صاحب لینک او را نمی‌شناسد)</small></span></a>
+      <a class="person side-one" href="?p=user&id=<?= (int) $t['visitor']['id'] ?>"><?= Html::avatar($t['visitor'], 'lg') ?><span><b><?= Html::e($t['visitor']['nickname'] ?? '#' . $t['visitor']['id']) ?></b><small>فرستنده ناشناس (صاحب لینک او را نمی‌شناسد)</small><small><?= Html::account($t['visitor']['account']) ?></small></span></a>
       <div class="chat-meta"><span class="badge violet">📩 صندوق ناشناس</span><div><?= Html::n(count($t['messages'])) ?> پیام</div><small class="muted">شروع <?= Html::date($t['created_at']) ?></small><a class="link" href="?p=inbox">← همه پیام‌ها</a></div>
-      <a class="person side-two" href="?p=user&id=<?= (int) $t['owner']['id'] ?>"><?= Html::avatar($t['owner'], 'lg') ?><span><b><?= Html::e($t['owner']['nickname'] ?? '#' . $t['owner']['id']) ?></b><small>صاحب لینک</small></span></a>
+      <a class="person side-two" href="?p=user&id=<?= (int) $t['owner']['id'] ?>"><?= Html::avatar($t['owner'], 'lg') ?><span><b><?= Html::e($t['owner']['nickname'] ?? '#' . $t['owner']['id']) ?></b><small>صاحب لینک</small><small><?= Html::account($t['owner']['account']) ?></small></span></a>
     </section>
     <section class="card transcript-card"><div class="transcript">
       <?php foreach ($t['messages'] as $m): ?>
@@ -38,7 +38,8 @@ $pageNo = max(1, (int) ($_GET['n'] ?? 1));
       <li><a class="chat-row" href="?p=inbox&session=<?= (int) $m['session_id'] ?>">
         <span class="pair"><?= Html::avatar($s, 'sm') ?><?= Html::avatar($r, 'sm') ?></span>
         <span class="names"><span class="nm"><b><?= Html::e($m['s_nick'] ?? '#' . $m['sender_user_id']) ?></b> <i>➜</i> <b><?= Html::e($m['r_nick'] ?? '#' . $m['recipient_user_id']) ?></b></span>
-          <small><?= Html::typeIcon($m['message_type']) ?> <?= Html::e(mb_strimwidth((string) $m['text_content'], 0, 100, '…')) ?></small></span>
+          <small><?= Html::typeIcon($m['message_type']) ?> <?= Html::e(mb_strimwidth((string) $m['text_content'], 0, 100, '…')) ?></small>
+          <?php if ($m['s_account']): ?><small>فرستنده: <?= Html::account($m['s_account']) ?></small><?php endif; ?></span>
         <span class="meta">
           <?= $m['reply_to_id'] ? Html::badge('↩️ پاسخ') : '' ?>
           <?= $m['status'] === 'blocked' ? Html::badge('🚫 مسدود', 'bad') : ($m['status'] === 'new' ? Html::badge('📬 نخوانده', 'amber') : '') ?>
