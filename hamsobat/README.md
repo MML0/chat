@@ -61,6 +61,13 @@ hamsobat/
 
 HTTPS is required by Bale for webhooks.
 
+### Updating to 1.3.3 (clearer server charts)
+Replace the files (keep `config.php`); no `migrate.php`. Panel → 🖥 سرور:
+- **One range for everything:** ۱ ساعت / ۲۴ ساعت / ۷ روز at the top; every number and chart below follows it.
+- **🔎 اوج داشته؟** answers it in words: was there a traffic peak (3× the average, at least 10 requests), did the bot stay fast at the peak, which periods were slow (average ≥ 1 s), and the slowest single request.
+- **Two separate charts** (requests, and response time with Bale's API time on the same ms axis), each with real Y-axis numbers, a dashed average line, the peak labelled, and peaks/slow periods in amber.
+- **Hover or tap** a chart for every number at that time; **📋 جدول اعداد** lists them all.
+
 ### Updating to 1.3.2 (test accounts)
 Replace the files (keep `config.php`); no `migrate.php`. New setting `test_accounts` (panel ⚙️ → 👤 کاربران): list the Bale ids of your test accounts and they can be matched with each other whatever their age. Everyone else keeps the under-18 / 18+ rule. Empty the list when you finish testing.
 

@@ -171,15 +171,22 @@ for ($k = 0; $k < 22; $k++) {
     }
 }
 
-// ---------------------------------------------------------------- 24 h of request metrics (busy evenings)
-for ($m = 1440; $m >= 1; $m--) {
+// ---------------------------------------------------------------- 7 days of request metrics (busy evenings,
+// a traffic spike 25 minutes ago that stayed fast, a slow hour two days ago)
+for ($m = 7 * 1440; $m >= 1; $m--) {
     $t = $now - $m * 60;
     $hour = (int) gmdate('G', $t + 12600);
     $req = max(0, (int) round($hourWeight[$hour] * mt_rand(80, 140) / 100 * 2.2));
+    if ($m >= 22 && $m <= 27) {
+        $req = $req * 4 + 30;
+    }
     if (!$req) {
         continue;
     }
     $avg = mt_rand(110, 260) + $hourWeight[$hour] * 9;
+    if ($m >= 2 * 1440 && $m < 2 * 1440 + 60) {
+        $avg = mt_rand(1100, 1900);
+    }
     $db->run('INSERT INTO {request_metrics} (minute_at, source, requests, total_ms, max_ms, slow, errors, bale_calls, bale_ms, bale_errors, db_queries, max_memory_kb)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)', [
         gmdate('Y-m-d H:i:00', $t), 'webhook', $req, $req * $avg, (int) ($avg * mt_rand(150, 320) / 100), mt_rand(0, 100) < 2 ? 1 : 0, mt_rand(0, 1000) < 3 ? 1 : 0,

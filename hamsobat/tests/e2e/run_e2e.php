@@ -207,7 +207,7 @@ test('every page renders without errors', function () {
         '' => 'آخرین گفت‌وگوها', '?p=live' => 'پیام‌ها همین حالا', '?p=users' => 'Alpha', '?p=users&q=bet&sort=chats' => 'Beta',
         '?p=user&id=1' => 'هدیه اعتبار', '?p=chats' => 'گفت‌وگو', '?p=chats&status=active' => 'گفت‌وگو', '?p=chat&id=1' => 'سلام از بتا',
         '?p=inbox' => 'پیام‌های ناشناس', '?p=reports' => 'گزارش', '?p=reports&status=resolved' => 'گزارش', '?p=settings' => 'daily_free_chats',
-        '?p=server' => 'دیتابیس', '?p=logs' => 'کارهای انجام‌شده', '?p=broadcast' => 'ارسال برای همه', '?p=nope' => 'روند ۳۰ روز', '?p=user&id=999' => 'کاربر پیدا نشد',
+        '?p=server' => 'دیتابیس', '?p=server&range=1h' => 'اوج داشته؟', '?p=server&range=7d' => 'در هر ۴ ساعت', '?p=server&range=bad' => 'در هر ساعت', '?p=logs' => 'کارهای انجام‌شده', '?p=broadcast' => 'ارسال برای همه', '?p=nope' => 'روند ۳۰ روز', '?p=user&id=999' => 'کاربر پیدا نشد',
     ];
     foreach ($pages as $q => $needle) {
         [$code, $body, , $headers] = panel($q);

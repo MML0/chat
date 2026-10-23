@@ -1215,6 +1215,41 @@ test('Search buttons answer Bale first (no spinning button while matching)', fun
     ok($w->activeChat(2) !== null && count($calls) >= 4, 'then matched and both told');
 });
 
+echo "\nServer charts\n";
+
+test('Peaks: busiest bucket, spikes, slow buckets, slowest request', function () {
+    $mk = fn (int $req, float $ms, int $max = 0) => ['t' => 0, 'requests' => $req, 'avg_ms' => $ms, 'max_ms' => $max ?: (int) $ms, 'bale_avg_ms' => 0.0, 'errors' => 0];
+    $p = Hamsobat\Metrics::peaks([$mk(2, 100), $mk(0, 0), $mk(3, 120), $mk(40, 150, 900), $mk(2, 1500, 4000), $mk(3, 100)]);
+    ok($p['total'] === 50 && abs($p['mean'] - 50 / 6) < 1e-9, 'total, and the mean per bucket counts empty buckets');
+    ok($p['peak'] === 3 && $p['spikes'] === [3], 'the busiest bucket is the only spike (3× the mean and at least 10)');
+    ok($p['slow'] === [4] && $p['max_ms'] === 4000 && $p['max_at'] === 4, 'slow bucket and the slowest single request');
+    ok(abs($p['avg_ms'] - (2 * 100 + 3 * 120 + 40 * 150 + 2 * 1500 + 3 * 100) / 50) < 1e-9, 'average weighted by requests');
+    $quiet = Hamsobat\Metrics::peaks([$mk(0, 0), $mk(0, 0)]);
+    ok($quiet['peak'] === null && $quiet['spikes'] === [] && $quiet['avg_ms'] === 0.0, 'no traffic: no peak');
+});
+
+test('Time chart: real Y ticks, average in the legend, peak labelled, gaps, table, tooltip data', function () {
+    $bars = Hamsobat\Charts::time([
+        'type' => 'bars', 'unitLabel' => 'درخواست', 'axis' => [0 => 'A'], 'tips' => [['t' => 'x', 'r' => []], ['t' => 'y', 'r' => []], ['t' => 'z', 'r' => []]],
+        'series' => [['name' => 'درخواست', 'key' => 's1', 'values' => [4, 46, 10]]],
+        'avg' => 20, 'avgLabel' => 'میانگین: ۲۰', 'peakLabel' => 'اوج: ۴۶', 'flags' => [1],
+        'table' => ['head' => ['زمان'], 'rows' => [['<b>']]],
+    ]);
+    ok(contains($bars, '>۲۰<') && contains($bars, '>۶۰<') && !contains($bars, '>۸۰<'), 'Y ticks 0–60 by 20 for a max of 46');
+    ok(contains($bars, 'tc-bar s1 flag') && substr_count($bars, 'tc-bar s1') === 3, 'three bars, the flagged one marked');
+    ok(preg_match('~<figcaption class="tc-legend">.*میانگین: ۲۰~u', $bars) === 1 && contains($bars, 'class="tc-peak'), 'average named in the legend, peak labelled');
+    ok(contains($bars, '&lt;b&gt;') && contains($bars, '&quot;n&quot;:3'), 'table escaped, tooltip data for 3 buckets');
+
+    $lines = Hamsobat\Charts::time(['type' => 'lines', 'unit' => 'ms', 'tips' => [], 'peakLabel' => 'اوج',
+        'series' => [['name' => 'a', 'key' => 's1', 'values' => [300, null, 2600, 2400]]], 'threshold' => [1000, 'مرز کندی']]);
+    preg_match('~class="tc-line s1" d="([^"]*)"~', $lines, $d);
+    ok(substr_count($d[1] ?? '', 'M') === 2, 'no data = a gap in the line, not a drop to zero');
+    ok(contains($lines, '<b>ثانیه</b>') && contains($lines, 'tc-ref thr') && contains($lines, 'مرز کندی'), 'seconds from 2 s; the 1 s line is shown near the data');
+    $fast = Hamsobat\Charts::time(['type' => 'lines', 'unit' => 'ms', 'tips' => [], 'series' => [['name' => 'a', 'key' => 's1', 'values' => [100, 120]]], 'threshold' => [1000, 'مرز کندی']]);
+    ok(!contains($fast, 'tc-ref thr') && contains($fast, '<b>میلی‌ثانیه</b>'), 'far below 1 s: no threshold line squashing the data');
+    ok(contains(Hamsobat\Charts::time(['type' => 'bars', 'tips' => [], 'series' => [['name' => 'a', 'key' => 's1', 'values' => [0, 0]]]]), 'درخواستی ثبت نشده'), 'empty range: a message, not an empty chart');
+});
+
 echo "\n" . $GLOBALS['pass'] . ' passed, ' . count($GLOBALS['fail']) . " failed\n";
 foreach ($GLOBALS['fail'] as $f) {
     echo "  ✘ {$f}\n";

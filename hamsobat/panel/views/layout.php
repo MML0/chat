@@ -13,9 +13,9 @@ $openReports = (int) $app->db->value("SELECT COUNT(*) FROM {reports} WHERE statu
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title><?= Html::e($title[0]) ?> · پنل هم‌صحبت</title>
-<link rel="stylesheet" href="assets/panel.css?v=13">
+<link rel="stylesheet" href="assets/panel.css?v=14">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>">
-<script src="assets/panel.js?v=13" defer></script>
+<script src="assets/panel.js?v=14" defer></script>
 </head>
 <body data-page="<?= Html::e($page) ?>">
 <div class="shell">

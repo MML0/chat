@@ -63,6 +63,44 @@ final class Metrics
         ];
     }
 
+    /** A bucket with this many times the average traffic (and at least SPIKE_MIN requests) is a spike. */
+    public const SPIKE_RATIO = 3;
+    public const SPIKE_MIN = 10;
+
+    /**
+     * Where a series peaks: the busiest bucket, traffic spikes, slow buckets (average response
+     * of 1 s or more) and the slowest single request.
+     * @return array{total:int,mean:float,avg_ms:float,peak:?int,spikes:int[],slow:int[],max_ms:int,max_at:?int}
+     */
+    public static function peaks(array $series): array
+    {
+        $total = array_sum(array_column($series, 'requests'));
+        $mean = $series ? $total / count($series) : 0.0;
+        $out = ['total' => $total, 'mean' => $mean, 'avg_ms' => 0.0, 'peak' => null, 'spikes' => [], 'slow' => [], 'max_ms' => 0, 'max_at' => null];
+        $weighted = 0.0;
+        foreach ($series as $i => $p) {
+            if ($p['requests'] <= 0) {
+                continue;
+            }
+            $weighted += $p['avg_ms'] * $p['requests'];
+            if ($out['peak'] === null || $p['requests'] > $series[$out['peak']]['requests']) {
+                $out['peak'] = $i;
+            }
+            if ($p['requests'] >= max(self::SPIKE_MIN, self::SPIKE_RATIO * $mean)) {
+                $out['spikes'][] = $i;
+            }
+            if ($p['avg_ms'] >= self::SLOW_MS) {
+                $out['slow'][] = $i;
+            }
+            if ($p['max_ms'] > $out['max_ms']) {
+                $out['max_ms'] = $p['max_ms'];
+                $out['max_at'] = $i;
+            }
+        }
+        $out['avg_ms'] = $total ? $weighted / $total : 0.0;
+        return $out;
+    }
+
     /**
      * Time series for charts: $buckets buckets of $bucketMinutes each, oldest first.
      * @return array<int, array{t:int,requests:int,avg_ms:float,max_ms:int,bale_avg_ms:float,errors:int}>

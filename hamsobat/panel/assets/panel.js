@@ -33,6 +33,77 @@
       });
     });
 
+    // Time charts (server page): crosshair + one tooltip with every number of that time.
+    document.querySelectorAll('.tc').forEach(function (fig) {
+      var data;
+      try { data = JSON.parse(fig.getAttribute('data-tc')); } catch (e) { return; }
+      var plot = fig.querySelector('.tc-plot');
+      if (!plot || !data || !data.n) { return; }
+      var cols = fig.querySelectorAll('.tc-col');
+      var cross = el('div', 'tc-cross');
+      var tip = el('div', 'tc-tip');
+      cross.hidden = tip.hidden = true;
+      plot.appendChild(cross);
+      plot.appendChild(tip);
+      var dots = (data.dots || []).map(function (s) {
+        var d = el('i', 'tc-dot ' + s.k);
+        d.hidden = true;
+        plot.appendChild(d);
+        return d;
+      });
+      var current = -1;
+      var show = function (i) {
+        i = Math.max(0, Math.min(data.n - 1, i));
+        current = i;
+        var x = (i + 0.5) * 100 / data.n;
+        cross.style.left = x + '%';
+        cross.hidden = false;
+        cols.forEach(function (c, j) { c.classList.toggle('hover', j === i); });
+        (data.dots || []).forEach(function (s, k) {
+          var y = s.y[i];
+          dots[k].hidden = y === null;
+          if (y !== null) { dots[k].style.left = x + '%'; dots[k].style.bottom = y + '%'; }
+        });
+        var t = data.tips[i] || { t: '', r: [] };
+        tip.textContent = '';
+        tip.appendChild(el('span', 't', t.t));
+        t.r.forEach(function (r) {
+          var row = el('div', 'row');
+          var label = el('span', null, r[0]);
+          if (r[2]) { label.insertBefore(el('i', 'k ' + r[2]), label.firstChild); }
+          row.appendChild(label);
+          row.appendChild(el('b', null, r[1]));
+          tip.appendChild(row);
+        });
+        tip.style.left = x + '%';
+        tip.classList.toggle('flip', x > 55);
+        tip.hidden = false;
+      };
+      var hide = function () {
+        current = -1;
+        cross.hidden = tip.hidden = true;
+        dots.forEach(function (d) { d.hidden = true; });
+        cols.forEach(function (c) { c.classList.remove('hover'); });
+      };
+      var at = function (e) {
+        var r = plot.getBoundingClientRect();
+        return Math.floor((e.clientX - r.left) / r.width * data.n);
+      };
+      plot.addEventListener('pointermove', function (e) { show(at(e)); });
+      plot.addEventListener('pointerdown', function (e) { show(at(e)); });
+      plot.addEventListener('pointerleave', function (e) { if (e.pointerType === 'mouse') { hide(); } });
+      plot.addEventListener('focus', function () { show(current >= 0 ? current : data.n - 1); });
+      plot.addEventListener('blur', hide);
+      plot.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+          e.preventDefault();
+          show((current < 0 ? data.n - 1 : current) + (e.key === 'ArrowRight' ? 1 : -1));
+        } else if (e.key === 'Escape') {
+          hide();
+        }
+      });
+    });
+
     // Mobile menu
     document.querySelectorAll('[data-toggle-nav]').forEach(function (b) {
       b.addEventListener('click', function () { document.body.classList.toggle('nav-open'); });
